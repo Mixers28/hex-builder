@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 
 namespace AlphaHex.Runtime
 {
-    public enum WorldTool { Inspect, Claim, Road, Forestry, Mine, Smelter, Home }
+    public enum WorldTool { Inspect, Claim, Road, Forestry, Mine, Smelter, Home, House, Forager, Farm, Forester, DeepMine }
 
     [DefaultExecutionOrder(-100)]
     public sealed class GameBootstrap : MonoBehaviour
@@ -205,10 +205,26 @@ namespace AlphaHex.Runtime
             if (Input.GetKeyDown(KeyCode.Space)) TogglePause();
             if (Input.GetKeyDown(KeyCode.I)) hud.ToggleInspector();
             if (Input.GetKeyDown(KeyCode.M)) hud.ToggleMenu();
+            if (Input.GetKeyDown(KeyCode.T)) hud.ToggleTown();
+            if (Input.GetKeyDown(KeyCode.R)) hud.ShowResearch();
             if (Input.GetKeyDown(KeyCode.G)) FocusObjective();
-            if (Input.GetKeyDown(KeyCode.Escape)) { hud.CloseMenu(); SetTool(WorldTool.Inspect); }
+            if (Input.GetKeyDown(KeyCode.Escape)) { hud.CloseMenu(); hud.CloseTown(); SetTool(WorldTool.Inspect); }
+            if (hud.ResearchVisible)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha1)) Research(ResearchKind.Farming);
+                if (Input.GetKeyDown(KeyCode.Alpha2)) Research(ResearchKind.Reforestation);
+                if (Input.GetKeyDown(KeyCode.Alpha3)) Research(ResearchKind.DeepMining);
+                return;
+            }
             for (int i = 0; i <= (int)WorldTool.Home; i++)
                 if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + i))) SetTool((WorldTool)i);
+            if (Input.GetKeyDown(KeyCode.Alpha8)) SetTool(WorldTool.House);
+            if (Input.GetKeyDown(KeyCode.Alpha9)) SetTool(WorldTool.Forager);
+            if (Input.GetKeyDown(KeyCode.Alpha0)) SetTool(WorldTool.Farm);
+            if (Input.GetKeyDown(KeyCode.B)) SetTool(WorldTool.Forester);
+            if (Input.GetKeyDown(KeyCode.N)) SetTool(WorldTool.DeepMine);
+            if (Input.GetKeyDown(KeyCode.Return)) ApplyTool();
+            if (Input.GetKeyDown(KeyCode.F)) ForageSelected();
         }
 
         public void Select(HexCoord coord, bool inspect = true)
@@ -246,6 +262,11 @@ namespace AlphaHex.Runtime
                 case WorldTool.Forestry: Simulation.TryBuild(coord, BuildingKind.Forestry, out message); break;
                 case WorldTool.Mine: Simulation.TryBuild(coord, BuildingKind.Mine, out message); break;
                 case WorldTool.Smelter: Simulation.TryBuild(coord, BuildingKind.Smelter, out message); break;
+                case WorldTool.House: Simulation.TryBuild(coord, BuildingKind.House, out message); break;
+                case WorldTool.Forager: Simulation.TryBuild(coord, BuildingKind.Forager, out message); break;
+                case WorldTool.Farm: Simulation.TryBuild(coord, BuildingKind.Farm, out message); break;
+                case WorldTool.Forester: Simulation.TryBuild(coord, BuildingKind.Forester, out message); break;
+                case WorldTool.DeepMine: Simulation.TryBuild(coord, BuildingKind.DeepMine, out message); break;
                 default: message = "Choose a build or expansion tool below."; break;
             }
             SetNotice(message);
@@ -265,6 +286,26 @@ namespace AlphaHex.Runtime
         {
             if (!Selected.HasValue) return;
             Simulation.TryDemolish(Selected.Value, out string message);
+            SetNotice(message);
+        }
+
+        public void ForageSelected()
+        {
+            if (!Selected.HasValue) return;
+            Simulation.TryForage(Selected.Value, out string message);
+            SetNotice(message);
+        }
+
+        public void ToggleSelectedWork()
+        {
+            if (!Selected.HasValue) return;
+            Simulation.TryToggleWork(Selected.Value, out string message);
+            SetNotice(message);
+        }
+
+        public void Research(ResearchKind research)
+        {
+            Simulation.TryResearch(research, out string message);
             SetNotice(message);
         }
 
@@ -328,6 +369,7 @@ namespace AlphaHex.Runtime
             Paused = false;
             nextAutosave = Time.unscaledTime + 30;
             hud.HideInspector();
+            hud.CloseTown();
             Select(new HexCoord(0, 0), false);
         }
 
@@ -353,7 +395,7 @@ namespace AlphaHex.Runtime
             world.Refresh();
             if (preview != null)
             {
-                bool show = Selected.HasValue && Tool >= WorldTool.Forestry && Tool <= WorldTool.Smelter;
+                bool show = Selected.HasValue && (Tool >= WorldTool.Forestry && Tool <= WorldTool.Smelter || Tool >= WorldTool.House);
                 TileState tile = Selected.HasValue ? Simulation.GetTile(Selected.Value) : null;
                 show &= tile != null && tile.Building == BuildingKind.None && tile.Terrain != TerrainKind.Water;
                 preview.SetActive(show);

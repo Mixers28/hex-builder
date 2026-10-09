@@ -2,108 +2,68 @@
 
 ## Intended experience
 
-Build a small industrial settlement on a readable 3D hex landscape. Gather resources, establish extraction, refine ore, connect production, and expand into new deposits. The landscape should visibly change as the player works it.
+Grow a frontier camp into a town on a readable 3D hex island. Citizens move into houses, staff workplaces and eat food; development milestones unlock farming, reforestation and deeper mining. This borrows the settlement-growth concept of Manor Lords while using this project's own rules, hex terrain and artwork.
 
-The current focus is construction and economic growth. PvP, combat, multiplayer, and offline background production are not implemented.
+The current slice is a local town economy. There are no individual family needs, seasons, fertility, markets, taxation, combat, multiplayer or offline production.
 
-## World and mining
+## Town loop
 
-A new session creates a seeded world with a radius of six hexes. The starting base and surrounding radius-one territory are claimed. Expansion develops adjacent territory on that existing map; it does not create new islands or an infinite world.
+1. Four pioneers live at the depot, with 80 timber, 10 metal and 24 food.
+2. Build a forager hut and a connected house. Food workplaces receive citizens first.
+3. Two citizens move in every 20 seconds while connected housing has space, the last meal was supplied, and food stock covers the incoming population. Arrival consumes 2 food.
+4. Grow to 6, 10 and 14 citizens to earn one research point at each milestone. Choose Farming, Reforestation or Deep mining in any order; each costs one point.
+5. Connect logging, mining and smelting to produce expansion materials. Build more houses and food production as the town grows.
+6. Replant woodland with foresters and develop finite deeper reserves below exhausted surface quarries.
 
-Terrain is represented by raised hex columns. Forests and mineral deposits provide opportunities for production. Quarry depth progresses from zero to three in proportion to the original ore being extracted. Depleted ore tiles become rock; depleted forest tiles become grass.
+Population is a census, not a family simulation. Four pioneers remain based at the depot; houses each hold four newcomers. Occupied houses cannot be demolished. A disconnected home cannot receive newcomers. Existing residents remain and can work; shortages pause immigration without killing or evicting citizens. Restoring a successful meal permits immigration again.
 
-An exhausted forestry camp or mine clears automatically after its own final delivery arrives. If manual gathering empties an idle extractor, it clears immediately. Its access road remains so through traffic and connected producers keep working; the cleared land can be reused without a demolition step. No construction resources are refunded. Depleted extractors in older saves clear when simulation resumes. Smelters remain when they run out of input ore.
+## Workers and logistics
 
-This representation supports elevation, deposits, depletion, and a visibly deepening quarry. It does not support arbitrary underground tunnels, caves, overhangs, or freeform voxel editing. Those features would require a separate terrain and interaction design decision.
+Each connected, unpaused workplace uses one citizen. Food producers have priority, then other workplaces are assigned in stable coordinate order. Pausing work frees its citizen immediately; existing cargo continues travelling. Hunger does not stop production, preserving a recovery path. Unstaffed or disconnected jobs keep their progress and reserved input.
 
-## Playable loop
+Output travels to shared depot stock at 0.75 seconds per road edge. Each producer waits for its own delivery before restarting, so shorter routes improve throughput. Buildings also connect roads. Smelters reserve two ore directly from shared stock; there is no separate inbound ore delivery.
 
-1. Inspect the starting territory and identify nearby timber and ore.
-2. Gather starting resources manually through the available actions.
-3. Build forestry or a mine to establish recurring extraction.
-4. Connect production to the depot through roads or connected building tiles.
-5. Build a smelter and convert delivered ore into refined metal.
-6. Use accumulated construction resources to claim the frontier and establish another production site.
+Visible citizens are census-sized presentation figures. Their commuting animation follows connected roads, but does not schedule jobs or transfer goods. Cargo animation reflects actual saved shipments; Core alone credits resources. Manual gathering immediately credits stock even without a road.
 
-The first useful session goal is a working extraction-to-refining chain followed by one expansion that reaches a new opportunity. Numeric costs, yields, and durations are prototype balance values in Core, not a finalized economy.
+## Balance
 
-## Production roles
+Production times below exclude outbound delivery.
 
-| Element | Purpose |
+| Item | Cost / rule |
 | --- | --- |
-| Manual gathering | Provide immediate interaction and help bootstrap the first production chain. |
-| Forestry | Produce timber from a suitable forest tile. |
-| Mine | Extract ore from a suitable deposit and advance its quarry state. |
-| Smelter | Convert ore from connected shared stock into refined output. |
-| Depot | Provide the shared stock destination for the production network. |
-| Roads | Connect sites and determine shipment routes. |
-| Frontier claims | Make additional adjacent land available for development. |
-
-## What logistics currently means
-
-Production buildings dispatch outbound goods along the road/building network. Goods take time to arrive at the depot and become available in shared stock. Each building waits for its own shipment to arrive before starting another production cycle, making distance a continuing throughput cost. The player should be able to distinguish a resource still travelling from one available to spend.
-
-Smelter inputs are simplified: once connected, the smelter reserves ore from shared stock without an inbound carrier journey. Manual gathering grants stock immediately, even on a disconnected tile: harvesting consumes one tree for three timber, and excavation consumes one ore for one ore in stock. These explicit player actions are not a complete worker simulation.
-
-The current system should not be described as a finished supply-chain game. Dedicated inbound delivery, assigned workers, fuel, power, congestion, transport upgrades, and multiple storage destinations need separate implementation and balancing.
-
-## Initial balance
-
-These are starter values for tuning. Core is the source of truth if implementation values change.
-
-| Item | Starting value or rule |
-| --- | --- |
-| Initial depot stock | 80 timber, 0 ore, 10 metal. |
-| Frontier claim | 6 timber and 1 metal. |
+| Claim | 6 timber + 1 metal; adjacent owned land only. |
 | Road | 2 timber. |
-| Forestry | 10 timber to build; one tree produces 3 timber in 4 seconds. |
-| Mine | 14 timber and 2 metal to build; produces up to 2 ore in 5 seconds. |
-| Smelter | 20 timber and 4 metal to build; reserves 2 ore and produces 1 metal in 6 seconds. |
-| Shipment travel | 0.75 seconds per connected hex edge. |
-| Producer restart | Waits until its current outbound shipment arrives. |
-| Exhausted extractor | Removed after its final delivery; retains an access road without a construction refund. |
-| Demolition | No construction refund; reserved, unprocessed ore is returned where relevant. The depot and active shipment route tiles cannot be removed. |
+| House | 8 timber; capacity 4 newcomers. |
+| Forager hut | 6 timber; 2 food every 8 s. |
+| Farm | Farming research; 14 timber + 2 metal; 6 food every 20 s. |
+| Logging camp | 10 timber; 1 tree becomes 3 timber in 4 s. |
+| Forester | Reforestation research; 12 timber + 2 metal; plants one sapling in 8 s. |
+| Surface mine | 14 timber + 2 metal; up to 2 ore every 5 s. |
+| Deep mine | Deep mining research; 20 timber + 6 metal; up to 2 deep ore every 7 s. |
+| Smelter | 20 timber + 4 metal; 2 reserved ore become 1 metal in 6 s. |
+| Meals | Every 30 s; 1 food per 2 citizens, rounded up. A shortage consumes available food and blocks immigration until a successful meal. |
+| Immigration | 2 citizens per 20 s of eligible time; needs food equal to population after arrival, vacant connected housing, and no missed-meal flag. Consumes 2 food. Progress pauses during shortages. |
+| Hand forage | 2 food from claimed grass/forest; global 8 s cooldown. |
+| Hand gather | 3 timber per tree or 1 ore per surface excavation. No deep hand mining. |
+| Research | One point at population 6, 10 and 14; each of the three unlocks costs one. |
+| Simulation | Fixed 0.125 s steps; foreground time only; pause and 1x/2x speed. |
 
-Production times exclude delivery. With enough ore, a smelter four edges from the depot needs a 6-second job and a 3-second delivery before restarting. Its nominal cycle is therefore 9 seconds, subject to the simulation's time-step handling. This makes the cost of a distant site inspectable without adding a separate fleet-management system.
+## Woodland and quarries
 
-## Decisions to test
+The island contains 127 raised hex columns. Surface ore excavation progresses through three depth stages; deep extraction adds three more. Deep reserves start at twice the deposit's original surface ore and never refill on demolition or rebuilding. Deep mines require an exhausted surface deposit. This remains staged excavation, with no arbitrary tunnels, caves or overhangs.
 
-Removing attacks leaves space for economic choices. The first playtests should establish whether those choices are already understandable and consequential:
+Foresters plant on adjacent claimed grass or forest containing no building or a logging camp, no ore history, fewer than 12 mature trees and no existing sapling. They prefer sites with fewer trees, then logging sites. One sapling per tile matures into one tree after 45 seconds, even if its forester is later removed. Building over a growing sapling is prohibited except for a logging camp with existing trees. Saplings are shown in three growth sizes.
 
-- Does a nearby deposit justify developing it before a more distant one?
-- Does connecting a new production building noticeably improve useful output?
-- Can players identify whether extraction, refining, or transit is delaying expansion?
-- Does using resources for another building feel different from spending them to claim land?
-- Does a depleted forest or deepened quarry make the industrial site feel changed?
+An exhausted logging camp, surface mine or deep mine clears after its final delivery arrives; its access road stays. Hand gathering clears an idle exhausted extractor immediately. A logging camp next to a forester stays to harvest future regrowth. Removing that forester restores normal exhausted-camp cleanup. Smelters and food buildings stay when idle.
 
-The one-shipment-per-producer rule gives the prototype a simple transport constraint. Playtest whether this creates enough placement choice before adding carrier fleets, congestion, or local stock limits. Avoid adding several new resource systems to compensate for an unclear core loop.
+Demolition refunds no construction materials. Unprocessed smelter input is returned. The depot, occupied houses, and tiles used by active cargo cannot be removed. Manual removal asks for a second click; automatic exhausted-site cleanup does not.
 
-## Presentation and controls
+## Interface and art
 
-The world uses an angled orbit camera and tile selection. Building and mining actions should operate on the selected hex with clear eligibility and failure feedback. The HUD should expose stock, selection details, production status, and available actions without requiring the player to interpret debug data.
+The top bar separates stored and travelling timber, ore, metal and food. Town [T] contains population, housing, staffing, meals and building cards; Research [R] shows milestones and unlocks. Select a building, select a site, then Apply or Enter. The inspector offers gathering, hand foraging [F], work pause/resume and guarded removal.
 
-| Action | Current control |
-| --- | --- |
-| Select a tile | Left click or tap. |
-| Pan | WASD/arrow keys, middle-button drag, or one-finger touch drag. Shift increases keyboard pan speed. |
-| Orbit | Q/E, right-button drag, or two-finger twist. |
-| Zoom | Mouse wheel or two-finger pinch. |
-| Choose a tool | Toolbar or number keys 1–7. Choose the site, then use Apply for construction or a claim. |
-| Return to the base | HOME in the toolbar or number key 7 focuses and selects the existing depot. It does not build another depot. |
-| Pause | Pause/Resume button or Space. |
-| Change simulation speed | 1x/2x button. |
-| Save / load | Menu or F5/F9. |
-| Show / hide inspector | Show site / Hide site or I. Selection and build tools open it. |
-| Find the next useful site | Goal card Show site or G; centres and selects without spending resources. |
-| Island / save menu | Menu or M; Escape closes it. |
-| Inspect | INSPECT or Escape. |
+Keys 1–7 retain Inspect, Claim, Road, Logging, Mine, Smelter and Home. New shortcuts are 8 House, 9 Forager, 0 Farm, B Forester and N Deep mine. While Research is open, 1–3 choose its technologies. G centres the next useful site; I toggles inspection; M opens saves; F5/F9 save/load; Escape closes overlays. Mouse/touch camera controls are unchanged.
 
-The compact HUD keeps available stock and in-transit cargo separate. The site inspector shows remaining deposits, job/delivery progress, travel time, reserved smelter input, and waiting reasons. It starts collapsed. Save and island controls live in Menu; action messages disappear after eight seconds.
+Guidance starts with food, connected housing and research, then leads through extraction, refining and frontier supply. It never spends resources. New island requires confirmation and archives the current island in one Previous island slot.
 
-Guidance is derived from the saved world rather than transient building presence alone. It prioritizes disconnected production, missing extraction, refining, and fresh frontier deposits. Depleted starter sites, refining, and expanded claims indicate an established settlement. No tutorial flags, save schema, or balance values change. The guide searches over land for a claimable step toward fresh deposits and reports when no unused source remains reachable.
-
-New requires a second click within four seconds and archives the island being left. Previous reloads that one archived island; it is not a two-way switch and does not archive the island being replaced. There are no named save slots or multi-island history in this version. Manual removal also requires confirmation, with Core enforcing route and depot protection. Automatic extractor cleanup does not require confirmation; it preserves the road. A pending manual confirmation expires if that building clears before the second click.
-
-The starter configures landscape orientation for iOS. Touch interaction remains a validation target: a phone must make it easy to distinguish selecting a tile from moving the camera, avoid selecting terrain behind the HUD, and retain clear controls when the camera is close to a quarry. Desktop input alone does not prove those interactions work.
-
-Use prototype geometry to validate world readability and placement before investing in a full asset set. Keep selection, ownership, roads, deposits, and building silhouettes visually distinct.
+World geometry is procedural. The original house, farm and forester PNG illustrations appear in the construction cards; their provenance and exact prompts are in [ART.md](ART.md). They are reference illustrations, not 3D meshes. Touch usability and device performance still require physical-device checks.

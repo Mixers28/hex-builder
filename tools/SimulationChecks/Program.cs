@@ -6,7 +6,7 @@ using AlphaHex.Core;
 
 namespace AlphaHex.SimulationChecks
 {
-    internal static class Program
+    internal static partial class Program
     {
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { IncludeFields = true };
         private static readonly HexCoord Forest = new HexCoord(-1, 0);
@@ -42,7 +42,17 @@ namespace AlphaHex.SimulationChecks
                 ("Save and load resume reserved input and partial jobs", JobSaveContinuity),
                 ("Small and large timesteps produce the same world", TimestepConsistency),
                 ("Invalid save payloads fail before simulation starts", InvalidSaves),
-                ("Invalid tick durations cannot alter the world", InvalidTicks)
+                ("Invalid tick durations cannot alter the world", InvalidTicks),
+                ("Connected housing, food and milestones grow a town", TownGrowth),
+                ("Food shortages pause immigration and hand foraging recovers it", FoodRecovery),
+                ("Food workplaces have staffing priority and pausing releases citizens", Staffing),
+                ("Research gates buildings and points cannot be spent twice", ResearchUnlocks),
+                ("Foresters regrow timber and keep managed logging sites", Replanting),
+                ("Deep mining conserves finite reserves through saves and demolition", DeepExtraction),
+                ("Town production and growth resume identically after saving", TownContinuity),
+                ("Legacy migration copies old worlds and provisions them only once", TownMigration),
+                ("Town save validation rejects inconsistent residents and research", InvalidTownSaves),
+                ("Town guidance teaches food, housing and research without buying anything", TownGuidance)
             };
 
             foreach (var check in checks)
@@ -347,7 +357,7 @@ namespace AlphaHex.SimulationChecks
             sim.GetStatus(Smelter);
             sim.GetProgress(Smelter);
             sim.GetInTransit(ResourceKind.Metal);
-            SettlementGuide.Next(sim);
+            SettlementGuide.NextIndustry(sim);
             Equal(before, Save(sim.State), "Reading HUD state changed gameplay.");
         }
 
@@ -372,16 +382,16 @@ namespace AlphaHex.SimulationChecks
             foreach (int seed in new[] { 0, 417, int.MaxValue })
             {
                 Simulation sim = Simulation.Create(seed);
-                Equal("Start timber production", SettlementGuide.Next(sim).Heading, "First goal.");
-                Equal((HexCoord?)Forest, SettlementGuide.Next(sim).Target, "Starter forest.");
+                Equal("Start timber production", SettlementGuide.NextIndustry(sim).Heading, "First goal.");
+                Equal((HexCoord?)Forest, SettlementGuide.NextIndustry(sim).Target, "Starter forest.");
                 Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry setup.");
-                Equal((HexCoord?)Mine, SettlementGuide.Next(sim).Target, "Starter mine.");
+                Equal((HexCoord?)Mine, SettlementGuide.NextIndustry(sim).Target, "Starter mine.");
                 Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine setup.");
-                SettlementObjective refining = SettlementGuide.Next(sim);
+                SettlementObjective refining = SettlementGuide.NextIndustry(sim);
                 Equal("Refine your first metal", refining.Heading, "Refining goal.");
                 Check(refining.Target.HasValue && sim.TryBuild(refining.Target.Value, BuildingKind.Smelter, out _), "Invalid suggested smelter site.");
                 string before = Save(sim.State);
-                SettlementObjective expansion = SettlementGuide.Next(sim);
+                SettlementObjective expansion = SettlementGuide.NextIndustry(sim);
                 Equal("Secure the next deposit", expansion.Heading, "Missing expansion goal.");
                 Equal(before, Save(sim.State), "Guidance awarded progress or spent stock.");
                 Check(expansion.Target.HasValue && sim.TryClaim(expansion.Target.Value, out _), "Expansion target was not claimable.");
@@ -394,13 +404,13 @@ namespace AlphaHex.SimulationChecks
             Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry setup.");
             GatherToRemaining(sim, Forest, 1);
             sim.Tick(Simulation.ForestrySeconds);
-            SettlementObjective finalCargo = SettlementGuide.Next(sim);
+            SettlementObjective finalCargo = SettlementGuide.NextIndustry(sim);
             Equal("Restore timber supply", finalCargo.Heading, "Final delivery restarted the tutorial.");
             sim.Tick(Simulation.DeliverySecondsPerEdge);
             Equal(BuildingKind.None, sim.GetTile(Forest).Building, "Exhausted forestry was not cleared.");
-            SettlementObjective cleared = SettlementGuide.Next(sim);
+            SettlementObjective cleared = SettlementGuide.NextIndustry(sim);
             Simulation restored = new Simulation(Clone(sim.State));
-            SettlementObjective loaded = SettlementGuide.Next(restored);
+            SettlementObjective loaded = SettlementGuide.NextIndustry(restored);
             Equal(cleared.Heading, loaded.Heading, "Loading reset guidance.");
             Equal(cleared.Target, loaded.Target, "Loading changed the suggested frontier.");
             Check(loaded.Target.HasValue && loaded.Target.Value != Forest, "Guidance pointed to the empty forest.");
@@ -413,15 +423,15 @@ namespace AlphaHex.SimulationChecks
             Simulation sim = Simulation.Create();
             HexCoord frontier = new HexCoord(2, 0);
             Check(sim.TryClaim(frontier, out _) && sim.TryBuild(frontier, BuildingKind.Mine, out _), "Disconnected setup.");
-            Equal("Reconnect production", SettlementGuide.Next(sim).Heading, "A new camp took priority over reconnection.");
-            Equal((HexCoord?)frontier, SettlementGuide.Next(sim).Target, "Wrong disconnected producer.");
+            Equal("Reconnect production", SettlementGuide.NextIndustry(sim).Heading, "A new camp took priority over reconnection.");
+            Equal((HexCoord?)frontier, SettlementGuide.NextIndustry(sim).Target, "Wrong disconnected producer.");
             sim = Simulation.Create();
             Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Starved smelter setup.");
-            Equal("Restore ore supply", SettlementGuide.Next(sim).Heading, "Idle smelter's missing ore was not prioritized.");
-            Equal((HexCoord?)Mine, SettlementGuide.Next(sim).Target, "Wrong replacement ore target.");
+            Equal("Restore ore supply", SettlementGuide.NextIndustry(sim).Heading, "Idle smelter's missing ore was not prioritized.");
+            Equal((HexCoord?)Mine, SettlementGuide.NextIndustry(sim).Target, "Wrong replacement ore target.");
             sim = Simulation.Create();
             sim.State.Stock.Timber = 0;
-            Check(SettlementGuide.Next(sim).Detail.Contains("Gather by hand"), "Manual recovery path is not explained.");
+            Check(SettlementGuide.NextIndustry(sim).Detail.Contains("Gather by hand"), "Manual recovery path is not explained.");
         }
 
         private static void FrontierGuidance()
@@ -434,14 +444,14 @@ namespace AlphaHex.SimulationChecks
                 tile.Terrain = TerrainKind.Grass;
             }
             Simulation sim = new Simulation(state);
-            SettlementObjective goal = SettlementGuide.Next(sim);
+            SettlementObjective goal = SettlementGuide.NextIndustry(sim);
             Check(goal.Target.HasValue && goal.Target.Value != distant, "Suggested a distant illegal claim.");
             Check(sim.TryClaim(goal.Target.Value, out _), "First step toward a distant forest was not claimable.");
             TileState lastForest = sim.GetTile(distant);
             lastForest.TreesRemaining = 0;
             lastForest.Terrain = TerrainKind.Grass;
             sim = new Simulation(Clone(sim.State));
-            goal = SettlementGuide.Next(sim);
+            goal = SettlementGuide.NextIndustry(sim);
             Equal("Forests exhausted", goal.Heading, "Finite island still suggested new forestry.");
             Check(!goal.Target.HasValue, "Exhausted island suggested an empty target.");
         }

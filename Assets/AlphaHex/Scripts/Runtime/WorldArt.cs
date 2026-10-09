@@ -8,7 +8,7 @@ using Object = UnityEngine.Object;
 namespace AlphaHex.Runtime
 {
     /// <summary>Small, shared procedural art kit. No downloaded models or textures are required.</summary>
-    internal sealed class WorldArt : IDisposable
+    internal sealed partial class WorldArt : IDisposable
     {
         public readonly Material Cliff, PitFloor, Water, WaterGlint, Selection, Road, Concrete;
         public readonly Material Timber, Bark, Steel, DarkSteel, PaintedBlue, Ochre, Cream, Glass;
@@ -57,6 +57,7 @@ namespace AlphaHex.Runtime
             Cone = Register(BuildCone());
             Rock = Register(BuildRock());
             SelectionRing = Register(BuildRing(1.005f, 0.963f));
+            GableRoof = Register(BuildGableRoof());
         }
 
         public Material Surface(TerrainKind terrain, bool claimed)
@@ -70,6 +71,7 @@ namespace AlphaHex.Runtime
             {
                 case ResourceKind.Timber: return Timber;
                 case ResourceKind.Ore: return Ochre;
+                case ResourceKind.Food: return Leaves[2];
                 default: return Steel;
             }
         }
@@ -278,6 +280,11 @@ namespace AlphaHex.Runtime
                 case BuildingKind.Forestry: Forestry(parent); break;
                 case BuildingKind.Mine: Mine(parent); break;
                 case BuildingKind.Smelter: Smelter(parent); break;
+                case BuildingKind.House: House(parent); break;
+                case BuildingKind.Forager: Forager(parent); break;
+                case BuildingKind.Farm: Farm(parent); break;
+                case BuildingKind.Forester: Forester(parent); break;
+                case BuildingKind.DeepMine: DeepMine(parent); break;
             }
         }
 

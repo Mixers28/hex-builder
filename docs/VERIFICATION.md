@@ -1,5 +1,22 @@
 # Verification record
 
+## Town growth, research and original art — 2026-10-09
+
+Tested base revision `59af330` plus the town working-tree changes on macOS, Apple Silicon, Unity `6000.3.26f1` and .NET SDK `10.0.401`.
+
+| Check | Result |
+| --- | --- |
+| Standalone Core checks, Release | 35 passed. Covers supported/disconnected housing, immigration and meals, food recovery, staffing priority and pause, research costs and gates, replanted timber, deep-reserve conservation, save continuity, migration, invalid town state and town guidance. All prior production checks remain. |
+| Unity EditMode tests | 13 passed, 0 failed or skipped. Real `JsonUtility` tests cover missing schema-1 fields, cargo-preserving migration, no repeated provisions, immigration, research and sapling continuity. Three asset checks verify imported town illustrations and their size/alpha settings. |
+| Unity compile and Play Mode | Compiled and ran the existing island. The initial view retained 58 timber, 0 ore and 40 metal, added 24 food and four pioneers, and displayed the town controls. Observed citizen figures, worker counts and ongoing mine/logging/smelter deliveries during the user's live play. No runtime exceptions were found in the session log. |
+| Save continuity | Backed up the original primary and fallback locally under ignored `Artifacts/town-check/`. The live game loaded schema 1 and subsequently wrote schema 2. The user continued developing that island during verification; their newer save was retained. |
+| Original artwork | Generated house, farm and forester transparent PNGs with the built-in imagegen tool, copied into project Resources with `.meta` files, and connected to Town construction cards. Exact prompts are in `ART.md`. Imported at 256 pixels without mipmaps. |
+| Repository checks | Required files, JSON, new asset metadata, unique GUIDs, Core boundary and whitespace checks passed. `AGENTS.md` was preserved. |
+
+The three illustration size checks initially found that Unity ignored an incomplete default-platform import configuration; adding the default-platform maximum resolved all three failures. The generated PNGs themselves were preserved.
+
+The editor was left running for the user's playtest. Automated input yielded when the user interacted with the window; full Town/Research panel interaction and a complete visual build-through remain manual QA items. Touch controls, physical-device safe areas, exported builds and iOS devices were not checked. Visible citizens are presentation figures, not independent family/pathfinding simulation.
+
 ## Compact HUD and expansion guidance — 2026-10-09
 
 Tested base revision `27db9a6` plus the HUD/guidance working-tree changes on macOS, Apple Silicon, Unity `6000.3.26f1`, and .NET SDK `10.0.401`. The base revision checkpoints the previously verified extractor cleanup and generated Unity setup.

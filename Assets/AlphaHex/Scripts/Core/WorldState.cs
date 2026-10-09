@@ -4,8 +4,22 @@ using System.Collections.Generic;
 namespace AlphaHex.Core
 {
     public enum TerrainKind { Grass, Forest, Rock, Ore, Sand, Water }
-    public enum BuildingKind { None, Depot, Forestry, Mine, Smelter }
-    public enum ResourceKind { Timber, Ore, Metal }
+    public enum BuildingKind { None, Depot, Forestry, Mine, Smelter, House, Forager, Farm, Forester, DeepMine }
+    public enum ResourceKind { Timber, Ore, Metal, Food }
+    [Flags]
+    public enum ResearchKind { None = 0, Farming = 1, Reforestation = 2, DeepMining = 4 }
+
+    [Serializable]
+    public sealed class TownState
+    {
+        public int Population = Simulation.PioneerCitizens;
+        public int EarnedMilestones;
+        public ResearchKind Research;
+        public float ImmigrationProgress;
+        public float MealProgress;
+        public float ForageCooldown;
+        public bool LastMealMissed;
+    }
 
     [Serializable]
     public sealed class ResourceStock
@@ -13,14 +27,16 @@ namespace AlphaHex.Core
         public int Timber;
         public int Ore;
         public int Metal;
+        public int Food;
 
         public ResourceStock() { }
 
-        public ResourceStock(int timber, int ore, int metal)
+        public ResourceStock(int timber, int ore, int metal, int food = 0)
         {
             Timber = timber;
             Ore = ore;
             Metal = metal;
+            Food = food;
         }
     }
 
@@ -38,6 +54,12 @@ namespace AlphaHex.Core
         public int InitialOre;
         public int ExcavationDepth;
         public float WorkProgress;
+        public int Residents;
+        public bool WorkPaused;
+        public int DeepOreInitial;
+        public int DeepOreRemaining;
+        public bool SaplingPlanted;
+        public float SaplingAge;
 
         // An active smelting job owns these inputs until it completes or is demolished.
         // This prevents two smelters from spending the same depot ore.
@@ -68,6 +90,7 @@ namespace AlphaHex.Core
         public ResourceStock Stock = new ResourceStock();
         public List<TileState> Tiles = new List<TileState>();
         public List<Shipment> Shipments = new List<Shipment>();
+        public TownState Town = new TownState();
 
         // Persist the fixed-step clock so a save in the middle of a job or delivery resumes
         // at the same point, including the fraction of time before the next simulation step.

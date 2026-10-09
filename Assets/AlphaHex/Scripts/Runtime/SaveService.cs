@@ -131,7 +131,7 @@ namespace AlphaHex.Runtime
                 string json = File.ReadAllText(path, Encoding.UTF8);
                 WorldState state = JsonUtility.FromJson<WorldState>(json);
                 if (state == null) throw new ArgumentException("The save contains no world.");
-                simulation = new Simulation(state);
+                simulation = Simulation.Restore(state);
                 error = null;
                 return true;
             }

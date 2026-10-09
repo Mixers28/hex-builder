@@ -43,7 +43,7 @@ namespace AlphaHex.Runtime
 
         internal void Refresh(TileState state, Simulation simulation)
         {
-            bool quarry = state.Building == BuildingKind.Mine || state.ExcavationDepth > 0;
+            bool quarry = state.Building == BuildingKind.Mine || state.Building == BuildingKind.DeepMine || state.ExcavationDepth > 0;
             SurfaceHeight = Height(state);
             int terrainSignature;
             int detailSignature;
@@ -57,6 +57,7 @@ namespace AlphaHex.Runtime
                 detailSignature = terrainSignature * 31 + (int)state.Building;
                 detailSignature = detailSignature * 31 + Mathf.Clamp(state.TreesRemaining, 0, 12);
                 detailSignature = detailSignature * 31 + OreVisualCount(state);
+                detailSignature = detailSignature * 31 + (state.SaplingPlanted ? 1 + (int)(state.SaplingAge / 15) : 0);
             }
 
             if (_terrainSignature != terrainSignature)
@@ -119,9 +120,9 @@ namespace AlphaHex.Runtime
             }
 
             int ore = OreVisualCount(state);
-            if (state.Building != BuildingKind.Mine)
+            if (state.Building != BuildingKind.Mine && state.Building != BuildingKind.DeepMine)
             {
-                int rocks = state.Terrain == TerrainKind.Rock ? 5 : ore;
+                int rocks = state.Terrain == TerrainKind.Rock && state.Building == BuildingKind.None ? 5 : ore;
                 for (int i = 0; i < rocks; i++)
                 {
                     float angle = (i * 137.5f + seed % 45) * Mathf.Deg2Rad;
@@ -138,6 +139,9 @@ namespace AlphaHex.Runtime
                     _art.Boulder(_details, new Vector3(-0.34f + (i % 3) * 0.11f, 0, -0.65f + (i / 3) * 0.10f),
                         new Vector3(0.15f, 0.13f, 0.15f), i, i % 2 == 0 ? _art.Ochre : _art.Cliff);
             }
+
+            if (state.SaplingPlanted)
+                _art.Tree(_details, new Vector3(0.57f, 0, -0.35f), 0.18f + 0.10f * (int)(state.SaplingAge / 15), 2);
 
             if (state.Building != BuildingKind.None)
             {
@@ -193,7 +197,7 @@ namespace AlphaHex.Runtime
                 if (state.Building != BuildingKind.None)
                 {
                     start += new Vector3(delta.x, 0, delta.z).normalized * 0.54f;
-                    if (state.Building == BuildingKind.Mine) start += delta.normalized * 0.10f;
+                    if (state.Building == BuildingKind.Mine || state.Building == BuildingKind.DeepMine) start += delta.normalized * 0.10f;
                 }
                 WorldArt.Beam("Haul road", _roads, start, endpoint, 0.19f, 0.025f, _art.Road);
             }

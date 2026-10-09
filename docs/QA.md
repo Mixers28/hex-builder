@@ -85,3 +85,14 @@ These checks require the actual iOS build pipeline and a device; they cannot be 
 ## Recording results
 
 For each verification session, record the revision, environment, checks actually performed, result, and unresolved defects. Distinguish a Core test pass, an Editor pass, an exported build, and a physical-device pass. None substitutes for the others.
+
+## Town growth and original art
+
+- Begin a fresh test island or use a separate test save. Build a forager and house beside the depot. Confirm four pioneers become six citizens after 20 seconds and occupy the house.
+- Inspect food deliveries, 30-second meals, housing vacancies and assigned/available workers. Pause a workplace and check reassignment; in-flight cargo must still arrive.
+- Trigger a food shortage. Immigration must wait until a supplied meal; hand foraging [F] must respect its global 8-second cooldown. Existing citizens must remain.
+- Reach populations 6, 10 and 14. Spend each earned point once in Research [R]. Check locked buildings, duplicate research and keyboard 1–3 while this panel is open.
+- Build a farm, a forester beside claimed grass/forest, and a deep mine on an exhausted surface deposit. Inspect sapling maturation, managed logging retention, and finite deep reserves through save/load and removal.
+- Open Town [T], scroll all five building cards, and confirm the generated house/farm/forester illustrations appear with transparent backgrounds. Inspect the corresponding 3D silhouettes and visible census figures.
+- Migrate a backed-up schema-1 save with active jobs/cargo. Verify the existing economy is preserved, four pioneers and 24 food are added once, and current-schema reloads do not re-grant them.
+- Check Town, Research, inspector scrolling and generated cards at 1366×768 and 1024×768, then on the target physical device. A desktop check does not establish touch or iOS behavior.

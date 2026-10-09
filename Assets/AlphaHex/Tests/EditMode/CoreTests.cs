@@ -129,12 +129,71 @@ namespace AlphaHex.Tests
             Assert.That(original.GetTile(forest).Building, Is.EqualTo(BuildingKind.None));
             string json = JsonUtility.ToJson(original.State);
             Simulation loaded = new Simulation(JsonUtility.FromJson<WorldState>(json));
-            SettlementObjective goal = SettlementGuide.Next(loaded);
+            SettlementObjective goal = SettlementGuide.NextIndustry(loaded);
             Assert.That(goal.Heading, Is.EqualTo("Restore timber supply"));
-            Assert.That(goal.Target, Is.EqualTo(SettlementGuide.Next(original).Target));
+            Assert.That(goal.Target, Is.EqualTo(SettlementGuide.NextIndustry(original).Target));
             Assert.That(goal.Target.HasValue, Is.True);
             Assert.That(goal.Target.Value, Is.Not.EqualTo(forest));
             Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(json), "Guidance must not mutate the save.");
+        }
+
+        [Test]
+        public void JsonUtilityMigratesMissingTownFieldsAndPreservesLegacyCargo()
+        {
+            Simulation original = Simulation.Create();
+            Assert.That(original.TryBuild(Mine, BuildingKind.Mine, out _), Is.True);
+            original.Tick(5.25f);
+            string legacy = JsonUtility.ToJson(original.State).Replace("\"SchemaVersion\":2", "\"SchemaVersion\":1");
+            // Reproduce a version-one file, including truly absent fields rather than defaults.
+            legacy = System.Text.RegularExpressions.Regex.Replace(legacy, ",\"Town\":\\{[^}]*\\}", "");
+            legacy = System.Text.RegularExpressions.Regex.Replace(legacy, ",\"(Food|Residents|DeepOreInitial|DeepOreRemaining|SaplingAge)\":[0-9.]+", "");
+            legacy = System.Text.RegularExpressions.Regex.Replace(legacy, ",\"(WorkPaused|SaplingPlanted)\":(true|false)", "");
+            WorldState payload = JsonUtility.FromJson<WorldState>(legacy);
+            Assert.That(legacy, Does.Not.Contain("\"Town\""));
+            Simulation loaded = Simulation.Restore(payload);
+            Assert.That(payload.SchemaVersion, Is.EqualTo(1), "Migration mutated the source.");
+            Assert.That(loaded.State.Town.Population, Is.EqualTo(4));
+            Assert.That(loaded.State.Stock.Food, Is.EqualTo(24));
+            Assert.That(loaded.GetTile(Mine).DeepOreRemaining, Is.EqualTo(72));
+            loaded.Tick(0.5f);
+            Assert.That(loaded.State.Stock.Ore, Is.EqualTo(2));
+            loaded.State.Stock.Food = 3;
+            Simulation again = Simulation.Restore(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(loaded.State)));
+            Assert.That(again.State.Stock.Food, Is.EqualTo(3), "Migration provisions repeated.");
+        }
+
+        [Test]
+        public void JsonUtilityPreservesImmigrationFoodResearchAndSaplings()
+        {
+            Simulation original = Simulation.Create();
+            Assert.That(original.TryBuild(Smelter, BuildingKind.Forager, out _), Is.True);
+            Assert.That(original.TryBuild(new HexCoord(0, -1), BuildingKind.House, out _), Is.True);
+            original.Tick(20);
+            Assert.That(original.TryResearch(ResearchKind.Reforestation, out _), Is.True);
+            Assert.That(original.TryBuild(new HexCoord(-1, 1), BuildingKind.Forester, out _), Is.True);
+            Assert.That(original.TryHarvest(new HexCoord(-1, 0), out _), Is.True);
+            original.Tick(8.3f);
+            Assert.That(original.State.Tiles.Any(t => t.SaplingPlanted), Is.True);
+            Simulation loaded = Simulation.Restore(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(original.State)));
+            original.Tick(50);
+            loaded.Tick(50);
+            Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(JsonUtility.ToJson(original.State)));
+            Assert.That(loaded.HasResearch(ResearchKind.Reforestation), Is.True);
+            Assert.That(loaded.State.Town.Population, Is.EqualTo(8));
+        }
+
+        [TestCase("house")]
+        [TestCase("farm")]
+        [TestCase("forester")]
+        public void TownIllustrationsImportAsCompactTransparentTextures(string name)
+        {
+            Texture2D texture = Resources.Load<Texture2D>("TownArt/" + name);
+            Assert.That(texture, Is.Not.Null);
+            Assert.That(texture.width, Is.LessThanOrEqualTo(256));
+            string path = UnityEditor.AssetDatabase.GetAssetPath(texture);
+            var importer = (UnityEditor.TextureImporter)UnityEditor.AssetImporter.GetAtPath(path);
+            Assert.That(importer.alphaIsTransparency, Is.True);
+            Assert.That(importer.mipmapEnabled, Is.False);
         }
     }
 }

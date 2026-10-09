@@ -8,9 +8,9 @@ namespace AlphaHex.Core
     /// Deterministic local industrial-builder simulation. No rendering, file I/O, Unity
     /// objects, network calls, or real-time clock dependencies belong in this class.
     /// </summary>
-    public sealed class Simulation
+    public sealed partial class Simulation
     {
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
         public const int WorldRadius = 6;
         public const int MaxExcavationDepth = 3;
         public const int TimberPerTree = 3;
@@ -48,7 +48,7 @@ namespace AlphaHex.Core
             var state = new WorldState
             {
                 Seed = seed,
-                Stock = new ResourceStock(80, 0, 10)
+                Stock = new ResourceStock(80, 0, 10, StartingFood)
             };
 
             for (int q = -WorldRadius; q <= WorldRadius; q++)
@@ -124,6 +124,11 @@ namespace AlphaHex.Core
                 case BuildingKind.Forestry: return new ResourceStock(10, 0, 0);
                 case BuildingKind.Mine: return new ResourceStock(14, 0, 2);
                 case BuildingKind.Smelter: return new ResourceStock(20, 0, 4);
+                case BuildingKind.House: return new ResourceStock(8, 0, 0);
+                case BuildingKind.Forager: return new ResourceStock(6, 0, 0);
+                case BuildingKind.Farm: return new ResourceStock(14, 0, 2);
+                case BuildingKind.Forester: return new ResourceStock(12, 0, 2);
+                case BuildingKind.DeepMine: return new ResourceStock(20, 0, 6);
                 default: return new ResourceStock();
             }
         }
@@ -153,17 +158,27 @@ namespace AlphaHex.Core
 
         public bool TryBuild(HexCoord coord, BuildingKind building, out string message)
         {
-            if (building != BuildingKind.Forestry && building != BuildingKind.Mine && building != BuildingKind.Smelter)
-                return Fail("Choose forestry, a mine, or a smelter. The starting depot is permanent.", out message);
+            if (!Enum.IsDefined(typeof(BuildingKind), building) || building == BuildingKind.None || building == BuildingKind.Depot)
+                return Fail("Choose a building from the construction tools. The starting depot is permanent.", out message);
             if (!TryGetOwnedLand(coord, out TileState tile, out message)) return false;
             if (tile.Building != BuildingKind.None) return Fail("This tile already has a building.", out message);
+            ResearchKind required = RequiredResearch(building);
+            if (required != ResearchKind.None && !HasResearch(required))
+                return Fail("Research " + ResearchName(required) + " in the Town panel first.", out message);
 
             if (building == BuildingKind.Forestry && tile.TreesRemaining == 0)
                 return Fail("Forestry needs a tile with remaining trees.", out message);
             if (building == BuildingKind.Mine && tile.OreRemaining == 0)
                 return Fail("A mine needs a tile with remaining ore.", out message);
-            if (building == BuildingKind.Smelter && (tile.TreesRemaining > 0 || tile.OreRemaining > 0))
-                return Fail("Place the smelter on clear land.", out message);
+            if (building == BuildingKind.DeepMine && (tile.InitialOre == 0 || tile.OreRemaining > 0 || tile.DeepOreRemaining == 0))
+                return Fail("Deep mines need an exhausted surface deposit with remaining deep ore.", out message);
+            if ((building == BuildingKind.Smelter || building == BuildingKind.House) && (tile.TreesRemaining > 0 || tile.OreRemaining > 0 || tile.SaplingPlanted))
+                return Fail("Place this building on clear land without growing saplings.", out message);
+            if ((building == BuildingKind.Farm || building == BuildingKind.Forester)
+                && (tile.Terrain != TerrainKind.Grass || tile.InitialOre > 0 || tile.SaplingPlanted))
+                return Fail("Farms and foresters need clear grassland without growing saplings.", out message);
+            if (building == BuildingKind.Forager && ((tile.Terrain != TerrainKind.Grass && tile.Terrain != TerrainKind.Forest) || tile.SaplingPlanted))
+                return Fail("A forager needs grassland or forest without a growing sapling.", out message);
 
             ResourceStock cost = GetBuildCost(building);
             if (!CanAfford(cost.Timber, cost.Ore, cost.Metal))
@@ -173,6 +188,7 @@ namespace AlphaHex.Core
             tile.Building = building;
             tile.WorkProgress = 0;
             tile.InputOreReserved = 0;
+            tile.WorkPaused = false;
             _networkDirty = true;
             message = BuildingName(building) + " built. " + (GetPathToDepot(coord) == null
                 ? "It needs a road connection to the depot." : "It is connected to the depot.");
@@ -233,6 +249,8 @@ namespace AlphaHex.Core
         {
             if (!TryGetOwnedLand(coord, out TileState tile, out message)) return false;
             if (tile.Building == BuildingKind.Depot) return Fail("The starting depot cannot be demolished.", out message);
+            if (tile.Building == BuildingKind.House && tile.Residents > 0)
+                return Fail("This house is occupied. Keep its citizens housed.", out message);
             if (tile.Building == BuildingKind.None && !tile.HasRoad)
                 return Fail("There is no building or road to remove here.", out message);
             foreach (Shipment shipment in State.Shipments)
@@ -246,6 +264,7 @@ namespace AlphaHex.Core
                     AddToStock(ResourceKind.Ore, tile.InputOreReserved);
                 tile.InputOreReserved = 0;
                 tile.WorkProgress = 0;
+                tile.WorkPaused = false;
                 tile.Building = BuildingKind.None;
                 message = name + " removed. Construction materials are not refunded.";
             }
@@ -302,14 +321,21 @@ namespace AlphaHex.Core
             if (!tile.Claimed) return "Unclaimed land. Claim an adjacent tile to expand.";
             if (tile.Building == BuildingKind.Depot) return "Available stock excludes cargo in transit. "
                 + GetReservedOre() + " ore reserved by smelters. Deliveries enter stock on arrival.";
+            if (tile.Building == BuildingKind.House) return tile.Residents + " / " + HouseCapacity + " residents. "
+                + (GetPathToDepot(coord) == null ? "Connect this home to welcome citizens." : GetImmigrationStatus());
 
             Shipment shipment = FindShipment(coord);
             if (shipment != null)
-                return (IsDepletedExtractor(tile) ? "Final delivery: " : "Delivering ")
+            {
+                bool final = IsDepletedExtractor(tile) && !(tile.Building == BuildingKind.Forestry && IsManagedForest(tile));
+                return (final ? "Final delivery: " : "Delivering ")
                     + shipment.Amount + " " + shipment.Resource.ToString().ToLowerInvariant()
                     + ". Arrival in " + Math.Max(0, shipment.Duration - shipment.Elapsed).ToString("0.0", CultureInfo.InvariantCulture) + " s."
-                    + (IsDepletedExtractor(tile) ? " Building clears on arrival; road stays." : " Next job waits for this delivery.");
+                    + (final ? " Building clears on arrival; road stays." : " Next job waits for this delivery.");
+            }
 
+            if (tile.Building == BuildingKind.Forestry && tile.TreesRemaining == 0 && IsManagedForest(tile))
+                return "Waiting for regrowth. The nearby forester replants this woodland; its logging camp stays for the next harvest.";
             if (IsDepletedExtractor(tile))
                 return "Site exhausted. Building clears when simulation resumes; road stays.";
 
@@ -317,21 +343,26 @@ namespace AlphaHex.Core
             {
                 List<HexCoord> path = GetPathToDepot(coord);
                 if (path == null) return "Disconnected. Production is stopped. Connect roads or adjoining buildings to the depot.";
+                if (tile.WorkPaused) return "Work paused. Resume this workplace to assign a citizen again.";
+                if (GetWorkersAssigned(coord) == 0) return "Waiting for a citizen. Build connected housing and maintain food, or pause another workplace.";
+                if (tile.Building == BuildingKind.Forester && FindPlantingSite(tile) == null)
+                    return "No planting space. Claim adjacent grass or forest; occupied sites, quarries and full forests cannot be replanted.";
                 if (tile.Building == BuildingKind.Smelter && tile.InputOreReserved == 0 && State.Stock.Ore < OrePerMetal)
                     return "Waiting for ore: " + State.Stock.Ore + " / 2 available. " + GetInTransit(ResourceKind.Ore)
                         + " ore in transit. Hand-mine or connect a mine to supply the depot.";
-                ResourceKind output = tile.Building == BuildingKind.Forestry ? ResourceKind.Timber
-                    : tile.Building == BuildingKind.Mine ? ResourceKind.Ore : ResourceKind.Metal;
-                int amount = tile.Building == BuildingKind.Forestry ? TimberPerTree
-                    : tile.Building == BuildingKind.Mine ? Math.Min(2, tile.OreRemaining) : 1;
-                if (!CanReceive(output, amount)) return "Waiting: depot capacity is full, including cargo and reserved input. Spend resources to resume.";
+                if (tile.Building != BuildingKind.Forester && !CanReceive(OutputResource(tile.Building), OutputAmount(tile)))
+                    return "Waiting: depot capacity is full, including cargo and reserved input. Spend resources to resume.";
                 return BuildingName(tile.Building) + ": "
                     + Math.Floor(tile.WorkProgress / JobSeconds(tile.Building) * 100).ToString(CultureInfo.InvariantCulture)
                     + "%. " + (JobSeconds(tile.Building) - tile.WorkProgress).ToString("0.0", CultureInfo.InvariantCulture)
-                    + " s to next output.\nDelivery: " + ((path.Count - 1) * DeliverySecondsPerEdge).ToString("0.0", CultureInfo.InvariantCulture)
-                    + " s." + (tile.InputOreReserved > 0 ? " 2 ore reserved for this job." : "");
+                    + " s to " + (tile.Building == BuildingKind.Forester ? "plant a sapling. Growth takes 45 s." : "next output.\nDelivery: "
+                    + ((path.Count - 1) * DeliverySecondsPerEdge).ToString("0.0", CultureInfo.InvariantCulture) + " s.")
+                    + (tile.InputOreReserved > 0 ? " 2 ore reserved for this job." : "");
             }
 
+            if (tile.SaplingPlanted) return "A sapling is growing: " + Math.Max(0, TreeGrowthSeconds - tile.SaplingAge).ToString("0.0", CultureInfo.InvariantCulture) + " s to maturity.";
+            if (tile.OreRemaining == 0 && tile.DeepOreRemaining > 0) return "Surface deposit exhausted. " + tile.DeepOreRemaining
+                + " deep ore remains. " + (HasResearch(ResearchKind.DeepMining) ? "Build a deep mine to reach it." : "Unlock Deep mining in Town > Research.");
             if (tile.HasRoad) return GetPathToDepot(coord) == null ? "Road is disconnected from the depot." : "Road connected to the depot.";
             if (tile.TreesRemaining > 0) return "Forest: " + tile.TreesRemaining + " trees. Hand gather timber or build forestry.";
             if (tile.OreRemaining > 0) return "Deposit: " + tile.OreRemaining + " ore. Hand mine or build a mine.";
@@ -365,22 +396,37 @@ namespace AlphaHex.Core
 
         private void Step()
         {
+            StepTown();
+            EnsureStaffing();
             // Only shipments that existed at the start of this step move. New output
             // begins its trip after the job finishes, and arriving input is used next step.
             int movingShipments = State.Shipments.Count;
             foreach (TileState tile in _orderedTiles)
             {
-                if (tile.Building == BuildingKind.None || tile.Building == BuildingKind.Depot || FindShipment(tile.Coord) != null)
+                if (!NeedsWorker(tile.Building) || !_staffed.Contains(tile.Coord) || FindShipment(tile.Coord) != null)
                     continue;
                 if (tile.Building == BuildingKind.Forestry && tile.TreesRemaining == 0) continue;
                 if (tile.Building == BuildingKind.Mine && tile.OreRemaining == 0) continue;
+                if (tile.Building == BuildingKind.DeepMine && tile.DeepOreRemaining == 0) continue;
                 List<HexCoord> path = GetPathToDepot(tile.Coord);
                 if (path == null) continue;
 
-                ResourceKind output = tile.Building == BuildingKind.Forestry ? ResourceKind.Timber
-                    : tile.Building == BuildingKind.Mine ? ResourceKind.Ore : ResourceKind.Metal;
-                int amount = tile.Building == BuildingKind.Forestry ? TimberPerTree
-                    : tile.Building == BuildingKind.Mine ? Math.Min(2, tile.OreRemaining) : 1;
+                if (tile.Building == BuildingKind.Forester)
+                {
+                    TileState plantingSite = FindPlantingSite(tile);
+                    if (plantingSite == null) continue;
+                    tile.WorkProgress += (float)FixedStepSeconds;
+                    if (tile.WorkProgress >= ForesterSeconds)
+                    {
+                        tile.WorkProgress = 0;
+                        plantingSite.SaplingPlanted = true;
+                        plantingSite.SaplingAge = 0;
+                    }
+                    continue;
+                }
+
+                ResourceKind output = OutputResource(tile.Building);
+                int amount = OutputAmount(tile);
                 if (!CanReceive(output, amount)) continue;
 
                 if (tile.Building == BuildingKind.Smelter && tile.InputOreReserved == 0)
@@ -401,6 +447,11 @@ namespace AlphaHex.Core
                 }
                 else if (tile.Building == BuildingKind.Mine)
                     RemoveOre(tile, amount);
+                else if (tile.Building == BuildingKind.DeepMine)
+                {
+                    tile.DeepOreRemaining -= amount;
+                    tile.ExcavationDepth = TileDepth(tile);
+                }
                 else
                     tile.InputOreReserved = 0;
 
@@ -429,13 +480,17 @@ namespace AlphaHex.Core
 
         private static bool IsDepletedExtractor(TileState tile) =>
             tile.Building == BuildingKind.Forestry && tile.TreesRemaining == 0
-            || tile.Building == BuildingKind.Mine && tile.OreRemaining == 0;
+            || tile.Building == BuildingKind.Mine && tile.OreRemaining == 0
+            || tile.Building == BuildingKind.DeepMine && tile.DeepOreRemaining == 0;
 
         private bool TryClearDepletedExtractor(TileState tile)
         {
             if (!IsDepletedExtractor(tile) || FindShipment(tile.Coord) != null) return false;
+            if (tile.Building == BuildingKind.Forestry && IsManagedForest(tile)) return false;
             tile.Building = BuildingKind.None;
             tile.WorkProgress = 0;
+            tile.WorkPaused = false;
+            _staffingDirty = true;
             // Buildings already carry roads and other producers' deliveries. Retain
             // that connection when removing the structure, without refunding its cost.
             tile.HasRoad = true;
@@ -445,6 +500,7 @@ namespace AlphaHex.Core
         private void EnsureNetwork()
         {
             if (!_networkDirty) return;
+            _staffingDirty = true;
             _towardDepot.Clear();
             _towardDepot.Add(DepotCoord, DepotCoord);
             var queue = new Queue<HexCoord>();
@@ -509,13 +565,15 @@ namespace AlphaHex.Core
                     case ResourceKind.Timber: State.Stock.Timber += amount; break;
                     case ResourceKind.Ore: State.Stock.Ore += amount; break;
                     case ResourceKind.Metal: State.Stock.Metal += amount; break;
+                    case ResourceKind.Food: State.Stock.Food += amount; break;
                     default: throw new InvalidOperationException("Unknown resource.");
                 }
             }
         }
 
         private static long StockAmount(ResourceStock stock, ResourceKind resource) =>
-            resource == ResourceKind.Timber ? stock.Timber : resource == ResourceKind.Ore ? stock.Ore : stock.Metal;
+            resource == ResourceKind.Timber ? stock.Timber : resource == ResourceKind.Ore ? stock.Ore
+                : resource == ResourceKind.Metal ? stock.Metal : stock.Food;
 
         private static bool IsNetworkTile(TileState tile) => tile.Claimed && tile.Terrain != TerrainKind.Water
             && (tile.HasRoad || tile.Building != BuildingKind.None);
@@ -523,7 +581,7 @@ namespace AlphaHex.Core
         private static void RemoveOre(TileState tile, int amount)
         {
             tile.OreRemaining -= amount;
-            tile.ExcavationDepth = CalculateDepth(tile.InitialOre, tile.OreRemaining);
+            tile.ExcavationDepth = TileDepth(tile);
             if (tile.OreRemaining == 0)
             {
                 tile.Terrain = TerrainKind.Rock;
@@ -535,10 +593,12 @@ namespace AlphaHex.Core
             : (int)((long)(initial - remaining) * MaxExcavationDepth / initial);
 
         private static float JobSeconds(BuildingKind building) => building == BuildingKind.Forestry ? ForestrySeconds
-            : building == BuildingKind.Mine ? MineSeconds : building == BuildingKind.Smelter ? SmelterSeconds : 0;
+            : building == BuildingKind.Mine ? MineSeconds : building == BuildingKind.Smelter ? SmelterSeconds
+            : building == BuildingKind.Forager ? ForagerSeconds : building == BuildingKind.Farm ? FarmSeconds
+            : building == BuildingKind.Forester ? ForesterSeconds : building == BuildingKind.DeepMine ? DeepMineSeconds : 0;
 
-        private static string BuildingName(BuildingKind building) => building == BuildingKind.Forestry ? "Forestry camp"
-            : building == BuildingKind.Mine ? "Mine" : building == BuildingKind.Smelter ? "Smelter" : building.ToString();
+        public static string BuildingName(BuildingKind building) => building == BuildingKind.Forestry ? "Logging camp"
+            : building == BuildingKind.DeepMine ? "Deep mine" : building == BuildingKind.Forager ? "Forager hut" : building.ToString();
 
         private static bool Fail(string reason, out string message) { message = reason; return false; }
         private static bool IsFinite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
@@ -551,6 +611,7 @@ namespace AlphaHex.Core
             tile.TreesRemaining = trees;
             tile.OreRemaining = ore;
             tile.InitialOre = ore;
+            tile.DeepOreInitial = tile.DeepOreRemaining = ore * 2;
             tile.ExcavationDepth = 0;
         }
 
@@ -577,7 +638,7 @@ namespace AlphaHex.Core
         {
             if (state == null) throw InvalidSave("payload is null");
             if (state.SchemaVersion != CurrentSchemaVersion) throw InvalidSave("unsupported schema version");
-            if (state.Stock == null || state.Stock.Timber < 0 || state.Stock.Ore < 0 || state.Stock.Metal < 0)
+            if (state.Stock == null || state.Stock.Timber < 0 || state.Stock.Ore < 0 || state.Stock.Metal < 0 || state.Stock.Food < 0)
                 throw InvalidSave("resource stock is missing or negative");
             if (state.Tiles == null || state.Tiles.Count != 1 + 3 * WorldRadius * (WorldRadius + 1))
                 throw InvalidSave("the island must contain every radius-6 hex exactly once");
@@ -590,8 +651,10 @@ namespace AlphaHex.Core
             if (state.ElapsedSeconds != expectedElapsed)
                 throw InvalidSave("elapsed time disagrees with the saved simulation steps");
 
+            ValidateTown(state);
             var tiles = new Dictionary<HexCoord, TileState>();
             int depots = 0;
+            int residents = PioneerCitizens;
             long reservedOre = 0;
             foreach (TileState tile in state.Tiles)
             {
@@ -614,8 +677,23 @@ namespace AlphaHex.Core
                     throw InvalidSave("ore resource state is inconsistent");
                 if (tile.InitialOre > 0 && tile.Terrain != TerrainKind.Ore && tile.Terrain != TerrainKind.Rock)
                     throw InvalidSave("ore history is attached to unrelated terrain");
-                if (tile.ExcavationDepth != CalculateDepth(tile.InitialOre, tile.OreRemaining))
+                if (tile.DeepOreInitial != tile.InitialOre * 2 || tile.DeepOreRemaining < 0 || tile.DeepOreRemaining > tile.DeepOreInitial
+                    || (tile.DeepOreRemaining < tile.DeepOreInitial && (tile.OreRemaining > 0 || (state.Town.Research & ResearchKind.DeepMining) == 0)))
+                    throw InvalidSave("deep ore reserves are inconsistent");
+                if (tile.ExcavationDepth != TileDepth(tile))
                     throw InvalidSave("excavation depth disagrees with resource depletion");
+                if (tile.Residents < 0 || tile.Residents > HouseCapacity || tile.Residents % ImmigrationWave != 0
+                    || tile.Building != BuildingKind.House && tile.Residents != 0)
+                    throw InvalidSave("house residents are inconsistent");
+                residents += tile.Residents;
+                if (tile.WorkPaused && !NeedsWorker(tile.Building)) throw InvalidSave("only workplaces can pause work");
+                if (!IsFinite(tile.SaplingAge) || tile.SaplingAge < 0 || tile.SaplingAge >= TreeGrowthSeconds
+                    || !tile.SaplingPlanted && tile.SaplingAge != 0
+                    || tile.SaplingPlanted && (!tile.Claimed || tile.InitialOre > 0 || tile.TreesRemaining >= ForestCapacity
+                        || (state.Town.Research & ResearchKind.Reforestation) == 0
+                        || (tile.Terrain != TerrainKind.Grass && tile.Terrain != TerrainKind.Forest)
+                        || (tile.Building != BuildingKind.None && tile.Building != BuildingKind.Forestry)))
+                    throw InvalidSave("sapling growth is inconsistent");
                 if (!IsFinite(tile.WorkProgress) || tile.WorkProgress < 0)
                     throw InvalidSave("job progress is invalid");
 
@@ -629,14 +707,23 @@ namespace AlphaHex.Core
                     throw InvalidSave("forestry is on unsuitable terrain");
                 if (tile.Building == BuildingKind.Mine && (tile.InitialOre == 0 || (tile.Terrain != TerrainKind.Ore && tile.Terrain != TerrainKind.Rock)))
                     throw InvalidSave("a mine lacks a valid ore deposit");
-                if (tile.Building == BuildingKind.Smelter && (tile.TreesRemaining > 0 || tile.OreRemaining > 0))
-                    throw InvalidSave("smelter terrain is not clear");
+                if ((tile.Building == BuildingKind.Smelter || tile.Building == BuildingKind.House)
+                    && (tile.TreesRemaining > 0 || tile.OreRemaining > 0 || tile.SaplingPlanted))
+                    throw InvalidSave("building terrain is not clear");
+                if ((tile.Building == BuildingKind.Farm || tile.Building == BuildingKind.Forester)
+                    && (tile.Terrain != TerrainKind.Grass || tile.InitialOre > 0 || tile.SaplingPlanted))
+                    throw InvalidSave("farm or forester is not on clear grassland");
+                if (tile.Building == BuildingKind.Forager && ((tile.Terrain != TerrainKind.Grass && tile.Terrain != TerrainKind.Forest) || tile.SaplingPlanted))
+                    throw InvalidSave("forager is on unsuitable terrain");
+                if (tile.Building == BuildingKind.DeepMine && (tile.InitialOre == 0 || tile.OreRemaining > 0))
+                    throw InvalidSave("deep mine needs an exhausted surface deposit");
+                ResearchKind required = RequiredResearch(tile.Building);
+                if ((state.Town.Research & required) != required) throw InvalidSave("building research is missing");
 
                 float jobSeconds = JobSeconds(tile.Building);
                 if ((jobSeconds == 0 && tile.WorkProgress != 0) || (jobSeconds > 0 && tile.WorkProgress >= jobSeconds))
                     throw InvalidSave("job progress exceeds its duration");
-                if ((tile.Building == BuildingKind.Forestry && tile.TreesRemaining == 0
-                    || tile.Building == BuildingKind.Mine && tile.OreRemaining == 0) && tile.WorkProgress != 0)
+                if (IsDepletedExtractor(tile) && tile.WorkProgress != 0)
                     throw InvalidSave("a depleted extractor still has an active job");
                 if (tile.Building == BuildingKind.Smelter)
                 {
@@ -649,6 +736,7 @@ namespace AlphaHex.Core
                 reservedOre += tile.InputOreReserved;
             }
             if (depots != 1) throw InvalidSave("exactly one central depot is required");
+            if (residents != state.Town.Population) throw InvalidSave("population disagrees with occupied homes");
 
             // Every claim must be reachable through other claimed land: this is the same
             // frontier rule enforced by TryClaim, independent of the road network.
@@ -669,6 +757,7 @@ namespace AlphaHex.Core
             long timber = state.Stock.Timber;
             long ore = state.Stock.Ore + reservedOre;
             long metal = state.Stock.Metal;
+            long food = state.Stock.Food;
             foreach (Shipment shipment in state.Shipments)
             {
                 if (shipment == null || !Enum.IsDefined(typeof(ResourceKind), shipment.Resource) || shipment.Amount <= 0)
@@ -693,14 +782,17 @@ namespace AlphaHex.Core
                 if (!sources.Add(source.Coord) || source.WorkProgress != 0 || source.InputOreReserved != 0)
                     throw InvalidSave("a source has duplicate output or another job during delivery");
                 if (shipment.Resource == ResourceKind.Timber && (source.Building != BuildingKind.Forestry || shipment.Amount != TimberPerTree)
-                    || shipment.Resource == ResourceKind.Ore && (source.Building != BuildingKind.Mine || shipment.Amount > 2)
-                    || shipment.Resource == ResourceKind.Metal && (source.Building != BuildingKind.Smelter || shipment.Amount != 1))
+                    || shipment.Resource == ResourceKind.Ore && ((source.Building != BuildingKind.Mine && source.Building != BuildingKind.DeepMine) || shipment.Amount > 2)
+                    || shipment.Resource == ResourceKind.Metal && (source.Building != BuildingKind.Smelter || shipment.Amount != 1)
+                    || shipment.Resource == ResourceKind.Food && !((source.Building == BuildingKind.Forager && shipment.Amount == 2)
+                        || (source.Building == BuildingKind.Farm && shipment.Amount == 6)))
                     throw InvalidSave("shipment contents disagree with its source building");
                 if (shipment.Resource == ResourceKind.Timber) timber += shipment.Amount;
                 else if (shipment.Resource == ResourceKind.Ore) ore += shipment.Amount;
-                else metal += shipment.Amount;
+                else if (shipment.Resource == ResourceKind.Metal) metal += shipment.Amount;
+                else food += shipment.Amount;
             }
-            if (timber > int.MaxValue || ore > int.MaxValue || metal > int.MaxValue)
+            if (timber > int.MaxValue || ore > int.MaxValue || metal > int.MaxValue || food > int.MaxValue)
                 throw InvalidSave("stock and owned goods would overflow a resource counter");
         }
 

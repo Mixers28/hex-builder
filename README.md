@@ -16,20 +16,28 @@ The repository contains the game source, a bootstrap scene, procedural world art
 
 The first import will generate project settings, `Packages/packages-lock.json`, and assets under `Assets/AlphaHex/Settings` and `Assets/AlphaHex/Resources`. Review and commit these files together with their `.meta` files after the first successful import. Unity caches and IDE-generated solution/project files are ignored.
 
+## Grow your first town
+
+Open **Town [T]** and build a **forager hut** (6 timber) on clear land beside the depot. Build a **house** (8 timber) on another adjacent clear tile. Each house has four places; supported immigration brings two citizens every 20 seconds. Citizens eat every 30 seconds, and each active workplace needs one citizen. Food jobs receive workers first. The inspector can pause a workplace to free its worker; **F** gathers 2 emergency food every 8 seconds.
+
+At **6, 10 and 14 citizens**, earn a research point. **Research [R]** unlocks farms, replanting foresters and deep mines, one point each in any order. Farms produce more food; foresters plant adjacent owned woodland and grass, with 45-second sapling growth; deep mines reach finite reserves beneath exhausted surface ore. Occupied houses cannot be removed. Food shortages and disconnected homes pause immigration.
+
+The new house, farm and forester building cards use original generated illustrations. See [art and generation prompts](docs/ART.md). World buildings and citizens are still procedural 3D models.
+
 ## Your first production chain
 
-You start with a central depot, seven claimed tiles, **80 timber and 10 metal**. Tile coordinates appear in the inspector when selected.
+You start with a central depot, seven claimed tiles, **80 timber, 10 metal, 24 food and four pioneer citizens**. Tile coordinates appear in the inspector when selected.
 
-1. Select the forest at **(-1, 0)**. Choose **FORESTRY**, then press the action button in the right-hand inspector. Construction costs 10 timber.
+1. Select the forest at **(-1, 0)**. Choose **LOGGING**, then press the action button in the right-hand inspector. Construction costs 10 timber.
 2. Select the ore deposit at **(1, 0)**. Choose **MINE**, then confirm the action. Construction costs 14 timber and 2 metal.
 3. Select clear land at **(0, 1)**. Choose **SMELTER**, then confirm the action. Construction costs 20 timber and 4 metal.
 4. These three sites touch the depot and are connected immediately. Watch their deliveries reach it. Stock is credited when a shipment arrives; the smelter takes 2 ore from shared stock for each metal job.
 5. Select **(0, 2)**, choose **CLAIM**, and confirm. Claim **(1, 2)** next, build a road on **(0, 2)**, and place a smelter on **(1, 2)** if that tile is clear. If it has a resource, gather it or choose another suitable site. The inspector reports whether a building has a route to the depot.
 6. Develop the guaranteed frontier forest at **(-2, 0)** or ore deposit at **(2, 0)** when you need more resources. Forests and deposits are finite; extracted ore gradually deepens the quarry.
 
-**Hand gather** immediately supplies 3 timber per tree or 1 ore per excavation on a claimed tile with resources. It also works on a forestry or mine tile, giving you a manual way to get a stalled chain moving.
+**Hand gather** immediately supplies 3 timber per tree or 1 ore per excavation on a claimed tile with resources. It also works on a logging or mine tile, giving you a manual way to get a stalled chain moving.
 
-When a forest or deposit runs out, its forestry camp or mine removes itself after its final shipment reaches the depot. The access road remains, keeping other sites connected and leaving the tile available for construction. Hand gathering the last resource clears an idle extractor immediately. Existing saves receive the same cleanup when simulation resumes. Construction costs are not refunded.
+When a forest or deposit runs out, its logging camp or mine removes itself after its final shipment reaches the depot. A logging camp next to a forester remains to harvest future regrowth. Deep mines clear after exhausting their deeper reserve. The access road remains, keeping other sites connected and leaving the tile available for construction. Hand gathering the last resource clears an idle extractor immediately. Existing saves receive the same cleanup when simulation resumes. Construction costs are not refunded.
 
 Buildings and road tiles both connect the network. Each producer waits for its own outgoing delivery before beginning another job, so longer routes reduce output. Smelter input is withdrawn from shared depot stock; inbound ore transport is an intentional prototype simplification.
 
@@ -49,28 +57,32 @@ Buildings and road tiles both connect the network. Each producer waits for its o
 | Show / hide inspector | I or Show site / Hide site | Show site / Hide site |
 | Find the next useful site | G or the goal card's Show site | Goal card's Show site |
 | Island and save menu | M or Menu | Menu |
+| Town / research | T / R | Town, then Research |
+| Town build shortcuts | 8 House, 9 Forager, 0 Farm, B Forester, N Deep mine | Town building cards |
+| Apply / emergency food | Enter / F | Inspector buttons |
 
-Tools 1–6 are Inspect, Claim, Road, Forestry, Mine, and Smelter. Escape closes the menu and returns to Inspect. Shift accelerates keyboard panning. The top bar also switches between 1× and 2× simulation speed. Touch controls and phone layout still require physical-device validation.
+Tools 1–6 are Inspect, Claim, Road, Logging, Mine, and Smelter. While Research is open, 1–3 choose its unlocks. Escape closes overlays and returns to Inspect. Shift accelerates keyboard panning. The top bar also switches between 1× and 2× simulation speed. Touch controls and phone layout still require physical-device validation.
 
 The HUD separates available depot stock from cargo in transit. Select a site to see remaining resources, job or delivery progress, route time, and the reason a producer is waiting. Reserved smelter ore is explained in the site and depot inspector. The inspector starts collapsed; selecting a tile or build tool opens it. Action messages clear after eight seconds.
 
-The next-step card follows the current economy: reconnect isolated producers, restore missing supplies, refine, then expand. Exhausted starter sites and existing expansion keep older saves from returning to the starting prompt. **Show site** selects and centres a useful site or the first claimable tile toward a distant deposit; it never buys or builds anything.
+The next-step card starts with connected food, housing and research, then follows the economy: reconnect isolated producers, restore missing supplies, refine, then expand. Exhausted starter sites and existing expansion keep older saves from returning to the starting prompt. **Show site** selects and centres a useful site or the first claimable tile toward a distant deposit; it never buys or builds anything.
 
 ## What is implemented
 
-- Seeded island with 127 hex coordinates, raised terrain, forest and ore deposits, coastal water, and three excavation depth stages.
-- Tile inspection, adjacent land claims, roads, forestry, mines, smelters, and a permanent central depot.
+- Seeded island with 127 hex coordinates, raised terrain, forest and ore deposits, coastal water, three surface excavation stages and three deeper stages.
+- Tile inspection, adjacent land claims, roads, logging, mines, smelters, houses, foragers, farms, foresters, deep mines and a permanent central depot.
 - Procedural trees, rocks, industrial buildings, quarry terraces, and delivery vehicles. No paid art assets are required.
-- Resource costs, depletion, connected production, timed deliveries, recipe reservations, and guarded demolition.
+- Citizens, housing, immigration, meals, automatic staffing, work pause and three milestone research unlocks.
+- Resource costs, tree regrowth, finite deep ore, connected production, timed deliveries, recipe reservations, and guarded demolition.
 - Save, load, 30-second autosave, a fallback save, and a separate previous-island archive. Active production and shipments are serialized.
 - Desktop and touch camera controls, selection feedback, a build footprint, and a runtime HUD.
 - A Unity-independent C# economy, console checks, Unity EditMode tests, and a GitHub Actions workflow for checks that do not require a Unity license.
 
-**Terrain scope:** this is a raised hex-column world with staged excavation. It does not implement arbitrary voxel tunnels, caves, or overhangs. Multiplayer, combat, trading, power, worker assignment, sound, and offline progression are future work; see the roadmap.
+**Terrain scope:** this is a raised hex-column world with staged excavation. It does not implement arbitrary voxel tunnels, caves, or overhangs. Individual families, seasons, markets, multiplayer, combat, trading, power, manual worker assignment, sound and offline progression are future work; see the roadmap.
 
 ## Saves and new islands
 
-Saves use Unity's `Application.persistentDataPath`, outside the repository. The primary file is `alpha-hex-save.json`; a `.bak` file provides fallback recovery. Unsupported schemas and invalid states are rejected before loading.
+Saves use Unity's `Application.persistentDataPath`, outside the repository. The primary file is `alpha-hex-save.json`; a `.bak` file provides fallback recovery. Schema-1 saves migrate once to schema 2, adding four pioneers, 24 food and untouched deep reserves while preserving existing stock, tiles, jobs and cargo. Other unsupported schemas and invalid states are rejected before loading.
 
 **Menu → New island** requires a second click. It archives the current island as `alpha-hex-previous-island.json`, prepares a fresh seed, and saves the new island before switching. **Previous island** restores that archive. Autosaves do not replace the previous-island archive; starting another new island does. There is one archive slot, not a full save browser.
 
@@ -103,7 +115,7 @@ The helper also accepts `configure`, `build-macos`, `build-windows`, and `build-
 
 ### Current verification
 
-Local checks passed **25 Core checks** and **8 Unity EditMode tests**. Editor Play Mode covered the compact HUD at 1366×768 and 1024×768, keyboard navigation, saving, and guidance on an existing depleted settlement. Automated pointer clicks were inconclusive; touch input, exported builds, and iOS devices remain unverified. See the [verification record](docs/VERIFICATION.md) for the exact scope and the [QA checklist](docs/QA.md) for remaining checks.
+The town update passed **35 Core checks** and **13 Unity EditMode tests**, including old-save migration and generated-art imports. The existing island ran in Play Mode. Full Town/Research interaction remains a manual QA item; details are in [the verification log](docs/VERIFICATION.md). Touch input, exported builds and iOS devices remain unverified. See the [verification record](docs/VERIFICATION.md) for the exact scope and the [QA checklist](docs/QA.md) for remaining checks.
 
 ## Build for iOS
 
@@ -136,8 +148,10 @@ Do not create a second initial commit when publishing; the starter already has o
 | --- | --- |
 | `Assets/AlphaHex/Scripts/Core/Simulation.cs` | Economy, generation, action validation, routing, production, and state validation. |
 | `Assets/AlphaHex/Scripts/Core/WorldState.cs` | Serializable save data. |
+| `Assets/AlphaHex/Scripts/Core/TownRules.cs` | Population, food, workers, research, replanting and deeper resources. |
+| `Assets/AlphaHex/Scripts/Core/WorldMigration.cs` | Copy and migrate supported older saves. |
 | `Assets/AlphaHex/Scripts/Runtime/GameBootstrap.cs` | Session, input routing, tools, objectives, and save actions. |
-| `Assets/AlphaHex/Scripts/Runtime/GameHud.cs` | HUD layout and player-facing actions. |
+| `Assets/AlphaHex/Scripts/Runtime/GameHud.cs` / `TownHud.cs` | HUD and town/research panels. |
 | `Assets/AlphaHex/Scripts/Runtime/HexWorldView.cs` | Tile refresh and shipment visuals. |
 | `Assets/AlphaHex/Scripts/Runtime/WorldArt.cs` | Procedural geometry, palette, and building silhouettes. |
 | `Assets/AlphaHex/Scripts/Runtime/OrbitCamera.cs` | Mouse, keyboard, and touch camera. |
@@ -153,4 +167,4 @@ Read [architecture](docs/ARCHITECTURE.md), [game design and balance](docs/DESIGN
 - [Unity iOS environment setup](https://docs.unity3d.com/6000.3/Documentation/Manual/ios-environment-setup.html)
 - [Original hex-island reference shared for this direction](https://www.reddit.com/r/aigamedev/comments/1x0xkr2/working_on_a_hexa_island_builder_with_opus/)
 
-This repository contains original prototype code and procedural geometry. No code or art was copied from the Reddit reference.
+This repository contains original prototype code and procedural geometry. No code or art was copied from the Reddit reference or Manor Lords.

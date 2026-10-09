@@ -12,10 +12,13 @@ namespace AlphaHex.Runtime
 
         private Simulation _simulation;
         private WorldArt _art;
-        private Transform _tilesRoot, _shipmentsRoot, _environment;
+        private Transform _tilesRoot, _shipmentsRoot, _environment, _citizensRoot;
         private readonly Dictionary<HexCoord, HexTileView> _tiles = new Dictionary<HexCoord, HexTileView>();
         private readonly List<GameObject> _carriers = new List<GameObject>();
         private readonly List<Renderer> _cargoRenderers = new List<Renderer>();
+        private readonly List<GameObject> _citizens = new List<GameObject>();
+        private readonly List<HexCoord> _citizenHomes = new List<HexCoord>();
+        private readonly List<List<HexCoord>> _citizenRoutes = new List<List<HexCoord>>();
         private readonly HashSet<HexCoord> _present = new HashSet<HexCoord>();
         private readonly List<HexCoord> _removed = new List<HexCoord>();
         private HexCoord? _selected;
@@ -28,6 +31,7 @@ namespace AlphaHex.Runtime
             _art = new WorldArt();
             _tilesRoot = Group("Terrain");
             _shipmentsRoot = Group("Shipments");
+            _citizensRoot = Group("Citizens");
             _environment = Group("Coastal backdrop");
             Refresh();
             BuildEnvironment();
@@ -87,6 +91,7 @@ namespace AlphaHex.Runtime
             }
             Radius = extent;
             AnimateShipments();
+            RefreshCitizens();
         }
 
         public void SetSelected(HexCoord? coord)
@@ -119,6 +124,62 @@ namespace AlphaHex.Runtime
         private void Update()
         {
             AnimateShipments();
+            AnimateCitizens();
+        }
+
+        private void RefreshCitizens()
+        {
+            _citizenHomes.Clear();
+            _citizenRoutes.Clear();
+            for (int i = 0; i < Simulation.PioneerCitizens; i++) _citizenHomes.Add(new HexCoord(0, 0));
+            foreach (TileState tile in _simulation.State.Tiles)
+                for (int resident = 0; resident < tile.Residents; resident++) _citizenHomes.Add(tile.Coord);
+            List<HexCoord> workplaces = _simulation.GetStaffedWorkplaces();
+            for (int i = 0; i < _citizenHomes.Count; i++)
+            {
+                List<HexCoord> route = i < workplaces.Count ? _simulation.GetPathToDepot(_citizenHomes[i]) : null;
+                if (route != null)
+                {
+                    List<HexCoord> workRoute = _simulation.GetPathToDepot(workplaces[i]);
+                    for (int edge = workRoute.Count - 2; edge >= 0; edge--) route.Add(workRoute[edge]);
+                }
+                _citizenRoutes.Add(route);
+            }
+            while (_citizens.Count < _citizenHomes.Count) _citizens.Add(_art.Citizen(_citizensRoot, _citizens.Count));
+            AnimateCitizens();
+        }
+
+        private void AnimateCitizens()
+        {
+            if (_simulation == null) return;
+            float time = _simulation.State.ElapsedSeconds + (float)_simulation.State.PendingSeconds;
+            for (int i = 0; i < _citizens.Count; i++)
+            {
+                bool active = i < _citizenHomes.Count;
+                _citizens[i].SetActive(active);
+                if (!active) continue;
+                Transform citizen = _citizens[i].transform;
+                List<HexCoord> route = _citizenRoutes[i];
+                Vector3 position;
+                if (route != null && route.Count > 1)
+                {
+                    float pathPosition = Mathf.PingPong(time * 0.27f + i * 0.59f, route.Count - 1);
+                    int from = Mathf.Min(Mathf.FloorToInt(pathPosition), route.Count - 2);
+                    Vector3 a = WorldPosition(route[from]);
+                    Vector3 b = WorldPosition(route[from + 1]);
+                    Vector3 lane = Vector3.Cross((b - a).normalized, Vector3.up) * 0.13f;
+                    position = Vector3.Lerp(a, b, pathPosition - from) + lane;
+                    Vector3 heading = b - a;
+                    heading.y = 0;
+                    if (heading.sqrMagnitude > 0.001f) citizen.rotation = Quaternion.LookRotation(heading);
+                }
+                else
+                {
+                    float angle = time * 0.13f + i * 2.4f;
+                    position = WorldPosition(_citizenHomes[i]) + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * 0.58f;
+                }
+                citizen.position = position + Vector3.up * (Mathf.Sin(time * 7 + i) * 0.009f);
+            }
         }
 
         public void AnimateShipments()
@@ -178,7 +239,7 @@ namespace AlphaHex.Runtime
 
         private void Clear()
         {
-            foreach (Transform group in new[] { _tilesRoot, _shipmentsRoot, _environment })
+            foreach (Transform group in new[] { _tilesRoot, _shipmentsRoot, _environment, _citizensRoot })
             {
                 if (group == null) continue;
                 group.gameObject.SetActive(false);
@@ -187,11 +248,14 @@ namespace AlphaHex.Runtime
             _tiles.Clear();
             _carriers.Clear();
             _cargoRenderers.Clear();
+            _citizens.Clear();
+            _citizenHomes.Clear();
+            _citizenRoutes.Clear();
             _selected = null;
             if (_art != null) _art.Dispose();
             _art = null;
             _simulation = null;
-            _tilesRoot = _shipmentsRoot = _environment = null;
+            _tilesRoot = _shipmentsRoot = _environment = _citizensRoot = null;
         }
 
         private void OnDestroy()
