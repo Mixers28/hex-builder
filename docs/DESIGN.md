@@ -92,8 +92,15 @@ The world uses an angled orbit camera and tile selection. Building and mining ac
 | Return to the base | HOME in the toolbar or number key 7 focuses and selects the existing depot. It does not build another depot. |
 | Pause | Pause/Resume button or Space. |
 | Change simulation speed | 1x/2x button. |
-| Save / load | Buttons or F5/F9. |
+| Save / load | Menu or F5/F9. |
+| Show / hide inspector | Show site / Hide site or I. Selection and build tools open it. |
+| Find the next useful site | Goal card Show site or G; centres and selects without spending resources. |
+| Island / save menu | Menu or M; Escape closes it. |
 | Inspect | INSPECT or Escape. |
+
+The compact HUD keeps available stock and in-transit cargo separate. The site inspector shows remaining deposits, job/delivery progress, travel time, reserved smelter input, and waiting reasons. It starts collapsed. Save and island controls live in Menu; action messages disappear after eight seconds.
+
+Guidance is derived from the saved world rather than transient building presence alone. It prioritizes disconnected production, missing extraction, refining, and fresh frontier deposits. Depleted starter sites, refining, and expanded claims indicate an established settlement. No tutorial flags, save schema, or balance values change. The guide searches over land for a claimable step toward fresh deposits and reports when no unused source remains reachable.
 
 New requires a second click within four seconds and archives the island being left. Previous reloads that one archived island; it is not a two-way switch and does not archive the island being replaced. There are no named save slots or multi-island history in this version. Manual removal also requires confirmation, with Core enforcing route and depot protection. Automatic extractor cleanup does not require confirmation; it preserves the road. A pending manual confirmation expires if that building clears before the second click.
 

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using AlphaHex.Core;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -21,6 +20,7 @@ namespace AlphaHex.Runtime
         public bool Paused { get; private set; }
         public int Speed { get; private set; } = 1;
         public string Notice { get; private set; } = "Select a tile to inspect your settlement.";
+        public uint NoticeRevision { get; private set; }
 
         private HexWorldView world;
         private OrbitCamera orbit;
@@ -74,7 +74,7 @@ namespace AlphaHex.Runtime
             hud = new GameObject("Game HUD").AddComponent<GameHud>();
             hud.Initialize(this);
             CreatePlacementPreview();
-            Select(new HexCoord(0, 0));
+            Select(new HexCoord(0, 0), false);
             if (!float.IsPositiveInfinity(nextAutosave)) nextAutosave = Time.unscaledTime + 30;
         }
 
@@ -129,7 +129,7 @@ namespace AlphaHex.Runtime
             {
                 nextAutosave = Time.unscaledTime + 30;
                 if (!SaveService.TrySave(Simulation.State, out string error))
-                    Notice = error;
+                    SetNotice(error);
             }
         }
 
@@ -203,15 +203,19 @@ namespace AlphaHex.Runtime
             if (Input.GetKeyDown(KeyCode.F5)) SaveGame();
             if (Input.GetKeyDown(KeyCode.F9)) LoadGame();
             if (Input.GetKeyDown(KeyCode.Space)) TogglePause();
-            if (Input.GetKeyDown(KeyCode.Escape)) SetTool(WorldTool.Inspect);
+            if (Input.GetKeyDown(KeyCode.I)) hud.ToggleInspector();
+            if (Input.GetKeyDown(KeyCode.M)) hud.ToggleMenu();
+            if (Input.GetKeyDown(KeyCode.G)) FocusObjective();
+            if (Input.GetKeyDown(KeyCode.Escape)) { hud.CloseMenu(); SetTool(WorldTool.Inspect); }
             for (int i = 0; i <= (int)WorldTool.Home; i++)
                 if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + i))) SetTool((WorldTool)i);
         }
 
-        public void Select(HexCoord coord)
+        public void Select(HexCoord coord, bool inspect = true)
         {
             Selected = coord;
             world.SetSelected(coord);
+            if (inspect) hud.ShowInspector();
             Refresh();
         }
 
@@ -221,10 +225,12 @@ namespace AlphaHex.Runtime
             {
                 orbit.Initialize(Vector3.zero, world.Radius);
                 Tool = WorldTool.Inspect;
-                Select(new HexCoord(0, 0));
+                hud.HideInspector();
+                Select(new HexCoord(0, 0), false);
                 return;
             }
             Tool = tool;
+            if (tool != WorldTool.Inspect) hud.ShowInspector();
             Refresh();
         }
 
@@ -321,27 +327,24 @@ namespace AlphaHex.Runtime
             Tool = WorldTool.Inspect;
             Paused = false;
             nextAutosave = Time.unscaledTime + 30;
-            Select(new HexCoord(0, 0));
+            hud.HideInspector();
+            Select(new HexCoord(0, 0), false);
         }
 
         private void SetNotice(string message)
         {
             Notice = message;
+            unchecked { NoticeRevision++; }
             Refresh();
         }
 
-        public string Objective()
+        public void FocusObjective()
         {
-            var tiles = Simulation.State.Tiles;
-            if (!tiles.Any(t => t.Building == BuildingKind.Forestry))
-                return "Establish forestry on a claimed forest. You can also gather timber by hand.";
-            if (!tiles.Any(t => t.Building == BuildingKind.Mine))
-                return "Build a mine on the nearby iron deposit. Buildings and roads must connect to your depot.";
-            if (!tiles.Any(t => t.Building == BuildingKind.Smelter))
-                return "Build a smelter on clear land and connect it to the depot. Two ore produce one metal.";
-            if (tiles.Any(t => t.Building != BuildingKind.None && Simulation.GetPathToDepot(t.Coord) == null))
-                return "Connect your isolated buildings with roads. Select a building to see its current status.";
-            return "Keep metal flowing and claim adjoining land. Shorter delivery routes improve production.";
+            SettlementObjective next = SettlementGuide.Next(Simulation);
+            if (!next.Target.HasValue) return;
+            Tool = WorldTool.Inspect;
+            Select(next.Target.Value);
+            orbit.Focus(world.WorldPosition(next.Target.Value));
         }
 
         private void Refresh()

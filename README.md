@@ -45,9 +45,16 @@ Buildings and road tiles both connect the network. Each producer waits for its o
 | Return to depot view | 7 / HOME | HOME |
 | Apply selected action | Inspector action button | Inspector action button |
 | Pause / resume | Space or PAUSE | PAUSE |
-| Save / load | F5 / F9 or top buttons | Top buttons |
+| Save / load | F5 / F9 or Menu | Menu |
+| Show / hide inspector | I or Show site / Hide site | Show site / Hide site |
+| Find the next useful site | G or the goal card's Show site | Goal card's Show site |
+| Island and save menu | M or Menu | Menu |
 
-Tools 1–6 are Inspect, Claim, Road, Forestry, Mine, and Smelter. Escape returns to Inspect. Shift accelerates keyboard panning. The top bar also switches between 1× and 2× simulation speed. Touch controls and phone layout still require physical-device validation.
+Tools 1–6 are Inspect, Claim, Road, Forestry, Mine, and Smelter. Escape closes the menu and returns to Inspect. Shift accelerates keyboard panning. The top bar also switches between 1× and 2× simulation speed. Touch controls and phone layout still require physical-device validation.
+
+The HUD separates available depot stock from cargo in transit. Select a site to see remaining resources, job or delivery progress, route time, and the reason a producer is waiting. Reserved smelter ore is explained in the site and depot inspector. The inspector starts collapsed; selecting a tile or build tool opens it. Action messages clear after eight seconds.
+
+The next-step card follows the current economy: reconnect isolated producers, restore missing supplies, refine, then expand. Exhausted starter sites and existing expansion keep older saves from returning to the starting prompt. **Show site** selects and centres a useful site or the first claimable tile toward a distant deposit; it never buys or builds anything.
 
 ## What is implemented
 
@@ -65,7 +72,7 @@ Tools 1–6 are Inspect, Claim, Road, Forestry, Mine, and Smelter. Escape return
 
 Saves use Unity's `Application.persistentDataPath`, outside the repository. The primary file is `alpha-hex-save.json`; a `.bak` file provides fallback recovery. Unsupported schemas and invalid states are rejected before loading.
 
-**NEW** requires a second click. It archives the current island as `alpha-hex-previous-island.json`, prepares a fresh seed, and saves the new island before switching. **PREVIOUS** restores that archive. Autosaves do not replace the previous-island archive; starting another new island does. There is one archive slot, not a full save browser.
+**Menu → New island** requires a second click. It archives the current island as `alpha-hex-previous-island.json`, prepares a fresh seed, and saves the new island before switching. **Previous island** restores that archive. Autosaves do not replace the previous-island archive; starting another new island does. There is one archive slot, not a full save browser.
 
 If the primary save cannot be read and no valid fallback exists, the game opens a fresh island with automatic saving disabled for that session until you explicitly save or start a new island. This avoids silently overwriting the unreadable file. Elapsed time while the application is closed does not generate resources.
 
@@ -94,13 +101,9 @@ python3 tools/unity_cli.py test
 
 The helper also accepts `configure`, `build-macos`, `build-windows`, and `build-ios`. Set `UNITY_EDITOR` to the full Unity executable path, or pass `--editor`, if discovery does not match your installation. Batch logs and test results go to ignored `Artifacts/`.
 
-### Verification when this starter was prepared
+### Current verification
 
-Subsequent local validation passed 19 Core checks, 7 Unity EditMode tests, and an Editor Play Mode check of automatic extractor cleanup. See the latest entry in the [verification record](docs/VERIFICATION.md) for scope and remaining checks.
-
-**15 standalone simulation checks passed** against the same Core source used by Unity. They cover deterministic generation, valid and invalid actions, finite resources, road connectivity, shipments, refining reservations, demolition, production accounting, save continuity, timestep consistency, and malformed states.
-
-Unity Editor is not installed in the preparation environment. **Unity compilation, package import, scene rendering, Unity EditMode tests, and iOS builds have not been executed.** The five Unity EditMode tests include the real Unity JSON serialization path. See the [verification record](docs/VERIFICATION.md) and run the checklist in [docs/QA.md](docs/QA.md) on the first Editor import; a console test pass does not establish a Unity or device pass.
+Local checks passed **25 Core checks** and **8 Unity EditMode tests**. Editor Play Mode covered the compact HUD at 1366×768 and 1024×768, keyboard navigation, saving, and guidance on an existing depleted settlement. Automated pointer clicks were inconclusive; touch input, exported builds, and iOS devices remain unverified. See the [verification record](docs/VERIFICATION.md) for the exact scope and the [QA checklist](docs/QA.md) for remaining checks.
 
 ## Build for iOS
 

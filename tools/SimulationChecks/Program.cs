@@ -29,6 +29,12 @@ namespace AlphaHex.SimulationChecks
                 ("Manual depletion clears idle extractors and preserves outgoing cargo", ManualExtractorCleanup),
                 ("Cleared extractors preserve other producers' delivery routes", CleanupPreservesRoutes),
                 ("Older saves clean up exhausted extractors when simulation resumes", LegacyExtractorCleanup),
+                ("HUD totals separate available, moving and reserved resources", ProductionFeedback),
+                ("Production feedback explains disconnection and full capacity", BlockedProductionFeedback),
+                ("Guidance advances through the first production loop without changing state", FirstLoopGuidance),
+                ("Guidance survives depletion and save/load without repeating the starter", DepletionGuidance),
+                ("Guidance prioritizes disconnected and starved production", StalledProductionGuidance),
+                ("Guidance targets legal frontier steps and handles finite resources", FrontierGuidance),
                 ("Smelters reserve shared input exactly once", SharedSmeltingInputs),
                 ("Demolition returns reserved input and preserves active delivery routes", Demolition),
                 ("Mine-to-smelter chain conserves ore across stock, jobs and shipments", ProductionConservation),
@@ -314,6 +320,130 @@ namespace AlphaHex.SimulationChecks
             TileState tile = sim.GetTile(coord);
             while (tile.TreesRemaining > remaining) Check(sim.TryHarvest(coord, out _), "Hand gathering failed.");
             while (tile.OreRemaining > remaining) Check(sim.TryExcavate(coord, out _), "Hand mining failed.");
+        }
+
+        private static void ProductionFeedback()
+        {
+            Simulation sim = Simulation.Create();
+            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine setup.");
+            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Smelter setup.");
+            sim.Tick(5);
+            Equal(0, sim.State.Stock.Ore, "Cargo was spendable before arrival.");
+            Equal(2, sim.GetInTransit(ResourceKind.Ore), "Moving ore total.");
+            Equal(0, sim.GetReservedOre(), "Cargo was reserved before arrival.");
+            Check(sim.GetStatus(Smelter).Contains("2 ore in transit"), "Waiting smelter did not explain incoming ore.");
+            Check(sim.GetStatus(Mine).Contains("Next job waits"), "Producer's delivery wait was not explained.");
+            sim.Tick(0.375f);
+            Equal(0.5f, sim.GetProgress(Mine), "Delivery progress.");
+            sim = new Simulation(Clone(sim.State));
+            sim.Tick(0.375f);
+            Equal(2, sim.State.Stock.Ore, "Arrived ore was not available.");
+            Equal(0, sim.GetInTransit(ResourceKind.Ore), "Arrived cargo still counted as moving.");
+            sim.Tick(0.125f);
+            Equal(0, sim.State.Stock.Ore, "Reserved input still shown as available.");
+            Equal(2, sim.GetReservedOre(), "Reserved ore disappeared from feedback.");
+            Check(sim.GetStatus(Smelter).Contains("2 ore reserved"), "Active smelter did not explain reserved input.");
+            string before = Save(sim.State);
+            sim.GetStatus(Smelter);
+            sim.GetProgress(Smelter);
+            sim.GetInTransit(ResourceKind.Metal);
+            SettlementGuide.Next(sim);
+            Equal(before, Save(sim.State), "Reading HUD state changed gameplay.");
+        }
+
+        private static void BlockedProductionFeedback()
+        {
+            Simulation sim = Simulation.Create();
+            HexCoord frontier = new HexCoord(2, 0);
+            Check(sim.TryClaim(frontier, out _) && sim.TryBuild(frontier, BuildingKind.Mine, out _), "Disconnected setup.");
+            Check(sim.GetStatus(frontier).Contains("Disconnected"), "Missing disconnected reason.");
+            Equal(0f, sim.GetProgress(frontier), "Disconnected mine progressed.");
+            sim = Simulation.Create();
+            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Full depot setup.");
+            sim.State.Stock.Ore = int.MaxValue;
+            sim = new Simulation(Clone(sim.State));
+            Check(sim.GetStatus(Mine).Contains("capacity is full"), "Full depot was described as working.");
+            sim.Tick(10);
+            Equal(0f, sim.GetProgress(Mine), "Full depot should block production.");
+        }
+
+        private static void FirstLoopGuidance()
+        {
+            foreach (int seed in new[] { 0, 417, int.MaxValue })
+            {
+                Simulation sim = Simulation.Create(seed);
+                Equal("Start timber production", SettlementGuide.Next(sim).Heading, "First goal.");
+                Equal((HexCoord?)Forest, SettlementGuide.Next(sim).Target, "Starter forest.");
+                Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry setup.");
+                Equal((HexCoord?)Mine, SettlementGuide.Next(sim).Target, "Starter mine.");
+                Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine setup.");
+                SettlementObjective refining = SettlementGuide.Next(sim);
+                Equal("Refine your first metal", refining.Heading, "Refining goal.");
+                Check(refining.Target.HasValue && sim.TryBuild(refining.Target.Value, BuildingKind.Smelter, out _), "Invalid suggested smelter site.");
+                string before = Save(sim.State);
+                SettlementObjective expansion = SettlementGuide.Next(sim);
+                Equal("Secure the next deposit", expansion.Heading, "Missing expansion goal.");
+                Equal(before, Save(sim.State), "Guidance awarded progress or spent stock.");
+                Check(expansion.Target.HasValue && sim.TryClaim(expansion.Target.Value, out _), "Expansion target was not claimable.");
+            }
+        }
+
+        private static void DepletionGuidance()
+        {
+            Simulation sim = Simulation.Create();
+            Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry setup.");
+            GatherToRemaining(sim, Forest, 1);
+            sim.Tick(Simulation.ForestrySeconds);
+            SettlementObjective finalCargo = SettlementGuide.Next(sim);
+            Equal("Restore timber supply", finalCargo.Heading, "Final delivery restarted the tutorial.");
+            sim.Tick(Simulation.DeliverySecondsPerEdge);
+            Equal(BuildingKind.None, sim.GetTile(Forest).Building, "Exhausted forestry was not cleared.");
+            SettlementObjective cleared = SettlementGuide.Next(sim);
+            Simulation restored = new Simulation(Clone(sim.State));
+            SettlementObjective loaded = SettlementGuide.Next(restored);
+            Equal(cleared.Heading, loaded.Heading, "Loading reset guidance.");
+            Equal(cleared.Target, loaded.Target, "Loading changed the suggested frontier.");
+            Check(loaded.Target.HasValue && loaded.Target.Value != Forest, "Guidance pointed to the empty forest.");
+            Check(restored.TryClaim(loaded.Target.Value, out _), "Replacement forest was not claimable.");
+            Check(restored.GetTile(loaded.Target.Value).TreesRemaining > 0, "Replacement site has no timber.");
+        }
+
+        private static void StalledProductionGuidance()
+        {
+            Simulation sim = Simulation.Create();
+            HexCoord frontier = new HexCoord(2, 0);
+            Check(sim.TryClaim(frontier, out _) && sim.TryBuild(frontier, BuildingKind.Mine, out _), "Disconnected setup.");
+            Equal("Reconnect production", SettlementGuide.Next(sim).Heading, "A new camp took priority over reconnection.");
+            Equal((HexCoord?)frontier, SettlementGuide.Next(sim).Target, "Wrong disconnected producer.");
+            sim = Simulation.Create();
+            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Starved smelter setup.");
+            Equal("Restore ore supply", SettlementGuide.Next(sim).Heading, "Idle smelter's missing ore was not prioritized.");
+            Equal((HexCoord?)Mine, SettlementGuide.Next(sim).Target, "Wrong replacement ore target.");
+            sim = Simulation.Create();
+            sim.State.Stock.Timber = 0;
+            Check(SettlementGuide.Next(sim).Detail.Contains("Gather by hand"), "Manual recovery path is not explained.");
+        }
+
+        private static void FrontierGuidance()
+        {
+            WorldState state = Simulation.Create().State;
+            HexCoord distant = state.Tiles.First(t => t.TreesRemaining > 0 && HexCoord.Distance(t.Coord, new HexCoord(0, 0)) >= 4).Coord;
+            foreach (TileState tile in state.Tiles.Where(t => t.TreesRemaining > 0 && t.Coord != distant))
+            {
+                tile.TreesRemaining = 0;
+                tile.Terrain = TerrainKind.Grass;
+            }
+            Simulation sim = new Simulation(state);
+            SettlementObjective goal = SettlementGuide.Next(sim);
+            Check(goal.Target.HasValue && goal.Target.Value != distant, "Suggested a distant illegal claim.");
+            Check(sim.TryClaim(goal.Target.Value, out _), "First step toward a distant forest was not claimable.");
+            TileState lastForest = sim.GetTile(distant);
+            lastForest.TreesRemaining = 0;
+            lastForest.Terrain = TerrainKind.Grass;
+            sim = new Simulation(Clone(sim.State));
+            goal = SettlementGuide.Next(sim);
+            Equal("Forests exhausted", goal.Heading, "Finite island still suggested new forestry.");
+            Check(!goal.Target.HasValue, "Exhausted island suggested an empty target.");
         }
 
         private static void SharedSmeltingInputs()

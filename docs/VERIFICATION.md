@@ -1,5 +1,19 @@
 # Verification record
 
+## Compact HUD and expansion guidance — 2026-10-09
+
+Tested base revision `27db9a6` plus the HUD/guidance working-tree changes on macOS, Apple Silicon, Unity `6000.3.26f1`, and .NET SDK `10.0.401`. The base revision checkpoints the previously verified extractor cleanup and generated Unity setup.
+
+| Check | Result |
+| --- | --- |
+| Standalone Core checks, Release | 25 passed. New cases cover available/transit/reserved totals, waiting reasons and progress, a first production loop, saved depletion guidance, disconnected/starved producers, manual recovery, legal frontier steps, and finite resource exhaustion. |
+| Unity EditMode tests | 8 passed, 0 failed or skipped. Includes real `JsonUtility` restoration of guidance after starter depletion. Results: ignored `Artifacts/editmode-results.xml`. |
+| Repository and diff checks | Required files, JSON, asset metadata, unique GUIDs, Core boundary, and `git diff --check` passed. |
+| Editor compilation and Play Mode | Compiled without script errors. Visually inspected the HUD at 1366×768 and 1024×768, including the open inspector and build controls. Verified I, G, M, Escape, tool selection, pause feedback, F5, fading notifications, and a repeated save notification. G selected and centred the suggested ore site without spending stock. |
+| Existing settlement | Loaded the real save and confirmed “Restore ore supply” points to a fresh claimable deposit after starter mines/camps had cleared. Schema, seed, stock, tile data, and shipments matched the pre-HUD backup after UI checks; only the simulation clock advanced. |
+
+The settlement backup is local under ignored `Artifacts/hud-check/before-hud-save.json`. Native automated pointer clicks in the Unity Game view did not reliably match the displayed pointer; mouse-button interactions are therefore inconclusive, not a pass. Keyboard controls exercised the same menu, panel and goal handlers. No new island or demolition was performed on the user's save. Active cargo accounting and reserved-input feedback were verified in Core tests; a full manual mouse/touch production loop, notched safe areas, exported builds, and iOS devices remain outstanding.
+
 ## Automatic extractor cleanup — 2026-10-09
 
 Tested base revision `df81a13` plus the extractor-cleanup working-tree changes on macOS 26.6.2, Apple Silicon, Unity `6000.3.26f1`, and .NET SDK `10.0.401`.

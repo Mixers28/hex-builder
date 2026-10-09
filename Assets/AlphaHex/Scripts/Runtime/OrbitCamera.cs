@@ -39,6 +39,13 @@ namespace AlphaHex.Runtime
         private float MinimumDistance { get { return 4f; } }
         private float MaximumDistance { get { return Mathf.Max(18f, _radius * 4f); } }
 
+        public void Focus(Vector3 position)
+        {
+            _target = position;
+            _target.y = _center.y;
+            ClampTarget();
+        }
+
         private void Awake()
         {
             _camera = GetComponent<Camera>();

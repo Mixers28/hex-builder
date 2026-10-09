@@ -118,5 +118,23 @@ namespace AlphaHex.Tests
             Assert.That(loaded.State.Stock.Ore, Is.EqualTo(ore + (kind == BuildingKind.Mine ? 1 : 0)));
             Assert.DoesNotThrow(() => new Simulation(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(loaded.State))));
         }
+
+        [Test]
+        public void JsonUtilityKeepsExpansionGuidanceAfterStarterDepletion()
+        {
+            Simulation original = Simulation.Create();
+            HexCoord forest = new HexCoord(-1, 0);
+            Assert.That(original.TryBuild(forest, BuildingKind.Forestry, out _), Is.True);
+            original.Tick(60);
+            Assert.That(original.GetTile(forest).Building, Is.EqualTo(BuildingKind.None));
+            string json = JsonUtility.ToJson(original.State);
+            Simulation loaded = new Simulation(JsonUtility.FromJson<WorldState>(json));
+            SettlementObjective goal = SettlementGuide.Next(loaded);
+            Assert.That(goal.Heading, Is.EqualTo("Restore timber supply"));
+            Assert.That(goal.Target, Is.EqualTo(SettlementGuide.Next(original).Target));
+            Assert.That(goal.Target.HasValue, Is.True);
+            Assert.That(goal.Target.Value, Is.Not.EqualTo(forest));
+            Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(json), "Guidance must not mutate the save.");
+        }
     }
 }

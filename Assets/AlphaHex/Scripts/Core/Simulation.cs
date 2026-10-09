@@ -300,32 +300,67 @@ namespace AlphaHex.Core
             if (tile == null) return "Outside this island.";
             if (tile.Terrain == TerrainKind.Water) return "Coastal water. Building is available on land.";
             if (!tile.Claimed) return "Unclaimed land. Claim an adjacent tile to expand.";
-            if (tile.Building == BuildingKind.Depot) return "Depot. Completed deliveries enter shared stock here.";
+            if (tile.Building == BuildingKind.Depot) return "Available stock excludes cargo in transit. "
+                + GetReservedOre() + " ore reserved by smelters. Deliveries enter stock on arrival.";
 
             Shipment shipment = FindShipment(coord);
             if (shipment != null)
                 return (IsDepletedExtractor(tile) ? "Final delivery: " : "Delivering ")
                     + shipment.Amount + " " + shipment.Resource.ToString().ToLowerInvariant()
                     + ". Arrival in " + Math.Max(0, shipment.Duration - shipment.Elapsed).ToString("0.0", CultureInfo.InvariantCulture) + " s."
-                    + (IsDepletedExtractor(tile) ? " Building clears on arrival; road stays." : "");
+                    + (IsDepletedExtractor(tile) ? " Building clears on arrival; road stays." : " Next job waits for this delivery.");
 
             if (IsDepletedExtractor(tile))
                 return "Site exhausted. Building clears when simulation resumes; road stays.";
 
             if (tile.Building != BuildingKind.None)
             {
-                if (GetPathToDepot(coord) == null) return "Paused: connect this building to the depot with roads.";
+                List<HexCoord> path = GetPathToDepot(coord);
+                if (path == null) return "Disconnected. Production is stopped. Connect roads or adjoining buildings to the depot.";
                 if (tile.Building == BuildingKind.Smelter && tile.InputOreReserved == 0 && State.Stock.Ore < OrePerMetal)
-                    return "Waiting for 2 ore in depot stock.";
+                    return "Waiting for ore: " + State.Stock.Ore + " / 2 available. " + GetInTransit(ResourceKind.Ore)
+                        + " ore in transit. Hand-mine or connect a mine to supply the depot.";
+                ResourceKind output = tile.Building == BuildingKind.Forestry ? ResourceKind.Timber
+                    : tile.Building == BuildingKind.Mine ? ResourceKind.Ore : ResourceKind.Metal;
+                int amount = tile.Building == BuildingKind.Forestry ? TimberPerTree
+                    : tile.Building == BuildingKind.Mine ? Math.Min(2, tile.OreRemaining) : 1;
+                if (!CanReceive(output, amount)) return "Waiting: depot capacity is full, including cargo and reserved input. Spend resources to resume.";
                 return BuildingName(tile.Building) + ": "
                     + Math.Floor(tile.WorkProgress / JobSeconds(tile.Building) * 100).ToString(CultureInfo.InvariantCulture)
-                    + "% complete.";
+                    + "%. " + (JobSeconds(tile.Building) - tile.WorkProgress).ToString("0.0", CultureInfo.InvariantCulture)
+                    + " s to next output.\nDelivery: " + ((path.Count - 1) * DeliverySecondsPerEdge).ToString("0.0", CultureInfo.InvariantCulture)
+                    + " s." + (tile.InputOreReserved > 0 ? " 2 ore reserved for this job." : "");
             }
 
             if (tile.HasRoad) return GetPathToDepot(coord) == null ? "Road is disconnected from the depot." : "Road connected to the depot.";
             if (tile.TreesRemaining > 0) return "Forest: " + tile.TreesRemaining + " trees. Hand gather timber or build forestry.";
             if (tile.OreRemaining > 0) return "Deposit: " + tile.OreRemaining + " ore. Hand mine or build a mine.";
             return "Clear land. Ready for construction.";
+        }
+
+        public int GetInTransit(ResourceKind resource)
+        {
+            int amount = 0;
+            foreach (Shipment shipment in State.Shipments)
+                if (shipment.Resource == resource) amount += shipment.Amount;
+            return amount;
+        }
+
+        public int GetReservedOre()
+        {
+            int amount = 0;
+            foreach (TileState tile in _orderedTiles) amount += tile.InputOreReserved;
+            return amount;
+        }
+
+        /// <summary>The active job or outgoing delivery, for a read-only progress indicator.</summary>
+        public float GetProgress(HexCoord coord)
+        {
+            Shipment shipment = FindShipment(coord);
+            if (shipment != null) return shipment.Elapsed / shipment.Duration;
+            TileState tile = GetTile(coord);
+            float duration = tile == null ? 0 : JobSeconds(tile.Building);
+            return duration > 0 ? tile.WorkProgress / duration : 0;
         }
 
         private void Step()

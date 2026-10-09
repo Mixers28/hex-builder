@@ -10,6 +10,7 @@ The main boundary is between game rules and their presentation. Core code can ru
 | --- | --- | --- |
 | Core coordinates | `HexCoord` | Hex positions, neighbours, and distance calculations. |
 | Core state | `WorldState`, `TileState`, `Shipment` | Serializable gameplay data: terrain, claims, resources, buildings, stock, and goods in transit. |
+| Core guidance | `SettlementGuide`, `SettlementObjective` | Derive an actionable next site from depletion, production and claims without changing state or adding save fields. |
 | Core rules | `Simulation` | World generation, validated player commands, resource conversion, connectivity, and shipment progression. |
 | Runtime coordination | `GameBootstrap` | Create or load a session, connect runtime components, and advance Core. |
 | Runtime presentation | `HexWorldView`, `OrbitCamera` | Build the procedural scene from state and provide world navigation. |
@@ -43,6 +44,8 @@ Keep the distinction between stored goods, reserved inputs, and goods in transit
 Core automatically clears exhausted forestry and mines once their own outbound shipment has arrived. Clearing retains an access road, preserving the network topology and other shipments that cross the site. Manual gathering clears an exhausted idle extractor immediately; fixed-step cleanup also handles depleted buildings in older saves. No save schema change or construction refund is involved. The presentation refreshes the changed building from state.
 
 Core advances in fixed 0.125-second steps and preserves the fractional remainder in state. Runtime supplies foreground frame time at the selected 1x or 2x speed, caps the contribution of a long frame, and can pause advancement. Saving a timestamp does not authorize offline production or a wall-clock catch-up calculation. There is no background simulation service.
+
+HUD inventory reads available stock, shipment totals, and reserved ore separately. Production status and progress come from Core queries; displaying them does not advance the simulation. The goal card selects a site through the bootstrap and focuses the orbit camera without issuing a purchase. Collapsed panels are inactive so they cannot intercept terrain input.
 
 ## Persistence
 

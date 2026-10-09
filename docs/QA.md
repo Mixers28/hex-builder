@@ -39,6 +39,10 @@ Run these checks using the Editor patch pinned in the project:
 - Select tiles at the centre, at the map edge, and beside taller columns. Verify selection matches the visible hex.
 - Move, rotate, and zoom the camera. Verify reasonable limits and that UI interaction does not trigger an unintended world action.
 - Use HOME and number key 7. Confirm they focus and select the existing depot without placing a building or spending resources.
+- Check the HUD at 16:9 and a narrower landscape aspect. Collapse/reopen the inspector with its controls and I; selecting a tile or build tool must reopen it. Open/close Menu with M and Escape. Confirm the controls remain inside the safe area and the inspector scrolls when needed.
+- Use the next-step card or G to select its suggested site. It must centre the camera without claiming, building, or spending resources. After starter depletion and save/load, the card should recommend fresh resources rather than the exhausted site.
+- Check separate available/in-transit totals during a delivery and on arrival. Inspect a smelter waiting for ore, a working smelter with reserved input, and a disconnected producer. Pause and confirm the displayed progress freezes.
+- Trigger the same action message again after it fades; the new message should become visible for another eight seconds.
 - Gather timber and ore. Inspect stock and tile resource feedback before and after each action.
 - Place forestry, a mine, and a smelter under valid conditions. Try invalid terrain, insufficient resources, and already occupied tiles.
 - Observe an unconnected producer, connect it, and follow a shipment to the depot. Verify displayed stock changes at the appropriate stage.
