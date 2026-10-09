@@ -1,0 +1,23 @@
+name: Simulation checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate repository
+        run: python tools/validate_repo.py
+      - name: Run simulation checks
+        run: dotnet run --project tools/SimulationChecks/SimulationChecks.csproj --configuration Release
