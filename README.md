@@ -29,6 +29,8 @@ You start with a central depot, seven claimed tiles, **80 timber and 10 metal**.
 
 **Hand gather** immediately supplies 3 timber per tree or 1 ore per excavation on a claimed tile with resources. It also works on a forestry or mine tile, giving you a manual way to get a stalled chain moving.
 
+When a forest or deposit runs out, its forestry camp or mine removes itself after its final shipment reaches the depot. The access road remains, keeping other sites connected and leaving the tile available for construction. Hand gathering the last resource clears an idle extractor immediately. Existing saves receive the same cleanup when simulation resumes. Construction costs are not refunded.
+
 Buildings and road tiles both connect the network. Each producer waits for its own outgoing delivery before beginning another job, so longer routes reduce output. Smelter input is withdrawn from shared depot stock; inbound ore transport is an intentional prototype simplification.
 
 ## Controls
@@ -93,6 +95,8 @@ python3 tools/unity_cli.py test
 The helper also accepts `configure`, `build-macos`, `build-windows`, and `build-ios`. Set `UNITY_EDITOR` to the full Unity executable path, or pass `--editor`, if discovery does not match your installation. Batch logs and test results go to ignored `Artifacts/`.
 
 ### Verification when this starter was prepared
+
+Subsequent local validation passed 19 Core checks, 7 Unity EditMode tests, and an Editor Play Mode check of automatic extractor cleanup. See the latest entry in the [verification record](docs/VERIFICATION.md) for scope and remaining checks.
 
 **15 standalone simulation checks passed** against the same Core source used by Unity. They cover deterministic generation, valid and invalid actions, finite resources, road connectivity, shipments, refining reservations, demolition, production accounting, save continuity, timestep consistency, and malformed states.
 

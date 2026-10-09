@@ -12,6 +12,8 @@ A new session creates a seeded world with a radius of six hexes. The starting ba
 
 Terrain is represented by raised hex columns. Forests and mineral deposits provide opportunities for production. Quarry depth progresses from zero to three in proportion to the original ore being extracted. Depleted ore tiles become rock; depleted forest tiles become grass.
 
+An exhausted forestry camp or mine clears automatically after its own final delivery arrives. If manual gathering empties an idle extractor, it clears immediately. Its access road remains so through traffic and connected producers keep working; the cleared land can be reused without a demolition step. No construction resources are refunded. Depleted extractors in older saves clear when simulation resumes. Smelters remain when they run out of input ore.
+
 This representation supports elevation, deposits, depletion, and a visibly deepening quarry. It does not support arbitrary underground tunnels, caves, overhangs, or freeform voxel editing. Those features would require a separate terrain and interaction design decision.
 
 ## Playable loop
@@ -59,6 +61,7 @@ These are starter values for tuning. Core is the source of truth if implementati
 | Smelter | 20 timber and 4 metal to build; reserves 2 ore and produces 1 metal in 6 seconds. |
 | Shipment travel | 0.75 seconds per connected hex edge. |
 | Producer restart | Waits until its current outbound shipment arrives. |
+| Exhausted extractor | Removed after its final delivery; retains an access road without a construction refund. |
 | Demolition | No construction refund; reserved, unprocessed ore is returned where relevant. The depot and active shipment route tiles cannot be removed. |
 
 Production times exclude delivery. With enough ore, a smelter four edges from the depot needs a 6-second job and a 3-second delivery before restarting. Its nominal cycle is therefore 9 seconds, subject to the simulation's time-step handling. This makes the cost of a distant site inspectable without adding a separate fleet-management system.
@@ -92,7 +95,7 @@ The world uses an angled orbit camera and tile selection. Building and mining ac
 | Save / load | Buttons or F5/F9. |
 | Inspect | INSPECT or Escape. |
 
-New requires a second click within four seconds and archives the island being left. Previous reloads that one archived island; it is not a two-way switch and does not archive the island being replaced. There are no named save slots or multi-island history in this version. Removal also requires confirmation, with Core enforcing route and depot protection.
+New requires a second click within four seconds and archives the island being left. Previous reloads that one archived island; it is not a two-way switch and does not archive the island being replaced. There are no named save slots or multi-island history in this version. Manual removal also requires confirmation, with Core enforcing route and depot protection. Automatic extractor cleanup does not require confirmation; it preserves the road. A pending manual confirmation expires if that building clears before the second click.
 
 The starter configures landscape orientation for iOS. Touch interaction remains a validation target: a phone must make it easy to distinguish selecting a tile from moving the camera, avoid selecting terrain behind the HUD, and retain clear controls when the camera is close to a quarry. Desktop input alone does not prove those interactions work.
 

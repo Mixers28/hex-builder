@@ -4,7 +4,7 @@
 
 This document is a checklist, not a test execution report. A check being listed here does not mean it has passed.
 
-**The Unity Editor, Play Mode, iOS export, and a physical iOS device have not been run in the build environment used to prepare this starter.** They remain required validation steps. Console rule tests are a separate check; their actual execution result should be recorded with the revision tested.
+The initial starter was prepared without Unity Editor or device validation. Later local Editor and test results are recorded in [VERIFICATION.md](VERIFICATION.md); this checklist does not imply a complete QA pass. iOS export and physical-device validation remain outstanding. Console rule tests are a separate check; their actual execution result should be recorded with the revision tested.
 
 Use the setup and test commands in the root README. Do not infer Unity compilation or device performance from a successful .NET console run.
 
@@ -44,7 +44,9 @@ Run these checks using the Editor patch pinned in the project:
 - Observe an unconnected producer, connect it, and follow a shipment to the depot. Verify displayed stock changes at the appropriate stage.
 - Observe refining. Confirm the UI does not imply a physical inbound ore delivery that the simulation does not perform.
 - Extract enough ore to change quarry depth. Check the visible stage, selection, road representation, and camera readability.
-- Deplete a forest and a deposit. Check the grass/rock terrain transitions and whether completed production and stock still agree.
+- Deplete a forest and a deposit. Verify the building remains for its final delivery, then clears while its access road remains. Repeat by hand gathering, including during an outgoing shipment. Check grass/rock terrain, quarry depth, stock, and continued deliveries from a producer routed through the cleared tile.
+- Save during an exhausted extractor's final delivery and reload. Verify the delivery arrives once and the building clears. Load an older save with an idle exhausted building and confirm cleanup occurs when simulation resumes.
+- Arm manual building removal just before depletion cleanup. After the building clears, verify another confirmation is required to remove the remaining road.
 - Demolish an eligible building, then try the depot and a tile carrying an active shipment. Verify allowed refunds and rejection behavior.
 - Claim a valid frontier tile, then try an invalid or unaffordable claim. Verify the failure is explained and stock is unchanged.
 - Complete an extraction/refining/expansion loop without editing state in the Inspector.

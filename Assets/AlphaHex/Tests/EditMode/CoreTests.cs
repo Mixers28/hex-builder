@@ -89,5 +89,34 @@ namespace AlphaHex.Tests
             state.SchemaVersion++;
             Assert.Throws<ArgumentException>(() => new Simulation(state));
         }
+
+        [TestCase(BuildingKind.Forestry)]
+        [TestCase(BuildingKind.Mine)]
+        public void JsonUtilityPreservesFinalDeliveryUntilExtractorClears(BuildingKind kind)
+        {
+            Simulation original = Simulation.Create();
+            HexCoord coord = kind == BuildingKind.Forestry ? new HexCoord(-1, 0) : Mine;
+            Assert.That(original.TryBuild(coord, kind, out _), Is.True);
+            TileState tile = original.GetTile(coord);
+            while (tile.TreesRemaining > 1) Assert.That(original.TryHarvest(coord, out _), Is.True);
+            while (tile.OreRemaining > 1) Assert.That(original.TryExcavate(coord, out _), Is.True);
+            original.Tick(kind == BuildingKind.Forestry ? Simulation.ForestrySeconds : Simulation.MineSeconds);
+            int timber = original.State.Stock.Timber;
+            int ore = original.State.Stock.Ore;
+
+            Simulation loaded = new Simulation(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(original.State)));
+            loaded.Tick(0.625f);
+            Assert.That(loaded.GetTile(coord).Building, Is.EqualTo(kind));
+            Assert.That(loaded.State.Shipments.Count, Is.EqualTo(1));
+            loaded.Tick(0.125f);
+            original.Tick(0.75f);
+            Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(JsonUtility.ToJson(original.State)));
+            Assert.That(loaded.GetTile(coord).Building, Is.EqualTo(BuildingKind.None));
+            Assert.That(loaded.GetTile(coord).HasRoad, Is.True);
+            Assert.That(loaded.State.Shipments, Is.Empty);
+            Assert.That(loaded.State.Stock.Timber, Is.EqualTo(timber + (kind == BuildingKind.Forestry ? 3 : 0)));
+            Assert.That(loaded.State.Stock.Ore, Is.EqualTo(ore + (kind == BuildingKind.Mine ? 1 : 0)));
+            Assert.DoesNotThrow(() => new Simulation(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(loaded.State))));
+        }
     }
 }

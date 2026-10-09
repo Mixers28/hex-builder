@@ -25,6 +25,10 @@ namespace AlphaHex.SimulationChecks
                 ("Disconnected production pauses and connected output travels", NetworkAndDeliveries),
                 ("The final ore batch cannot be duplicated", LastOreBatch),
                 ("Full automated extraction conserves finite timber and ore", AutomatedDepletion),
+                ("Exhausted extractors clear only after their saved final delivery arrives", FinalDeliveryCleanup),
+                ("Manual depletion clears idle extractors and preserves outgoing cargo", ManualExtractorCleanup),
+                ("Cleared extractors preserve other producers' delivery routes", CleanupPreservesRoutes),
+                ("Older saves clean up exhausted extractors when simulation resumes", LegacyExtractorCleanup),
                 ("Smelters reserve shared input exactly once", SharedSmeltingInputs),
                 ("Demolition returns reserved input and preserves active delivery routes", Demolition),
                 ("Mine-to-smelter chain conserves ore across stock, jobs and shipments", ProductionConservation),
@@ -123,6 +127,7 @@ namespace AlphaHex.SimulationChecks
             for (int i = 0; i < trees; i++) Check(sim.TryHarvest(Forest, out _), "Manual forest depletion stopped early.");
             Equal(80 + trees * 3, sim.State.Stock.Timber, "Manual timber total.");
             Equal(TerrainKind.Grass, sim.GetTile(Forest).Terrain, "Cleared forest terrain.");
+            Check(!sim.GetTile(Forest).HasRoad, "Hand gathering on bare land created a road.");
             string cleared = Save(sim.State);
             Check(!sim.TryHarvest(Forest, out _), "Depleted forest yielded timber.");
             Equal(cleared, Save(sim.State), "Rejected harvest changed state.");
@@ -132,6 +137,7 @@ namespace AlphaHex.SimulationChecks
             Equal(ore, sim.State.Stock.Ore, "Manual ore total.");
             Equal(3, sim.GetTile(Mine).ExcavationDepth, "Quarry did not reach its final stage.");
             Equal(TerrainKind.Rock, sim.GetTile(Mine).Terrain, "Depleted ore terrain.");
+            Check(!sim.GetTile(Mine).HasRoad, "Hand mining on bare land created a road.");
             Check(!sim.TryExcavate(Mine, out _), "Depleted ore was duplicated.");
             new Simulation(Clone(sim.State));
         }
@@ -192,7 +198,122 @@ namespace AlphaHex.SimulationChecks
             Equal(0, sim.GetTile(Forest).TreesRemaining, "Forest not depleted.");
             Equal(0, sim.GetTile(Mine).OreRemaining, "Mine not depleted.");
             Equal(3, sim.GetTile(Mine).ExcavationDepth, "Automatic quarry stages.");
+            foreach (HexCoord coord in new[] { Forest, Mine })
+            {
+                Equal(BuildingKind.None, sim.GetTile(coord).Building, "Exhausted building remained.");
+                Check(sim.GetTile(coord).HasRoad, "The extractor's access road was lost.");
+            }
             new Simulation(Clone(sim.State));
+        }
+
+        private static void FinalDeliveryCleanup()
+        {
+            foreach (BuildingKind kind in new[] { BuildingKind.Forestry, BuildingKind.Mine })
+            {
+                Simulation sim = Simulation.Create();
+                HexCoord coord = kind == BuildingKind.Forestry ? Forest : Mine;
+                Check(sim.TryBuild(coord, kind, out _), "Extractor build failed.");
+                GatherToRemaining(sim, coord, 1);
+                sim.Tick(kind == BuildingKind.Forestry ? Simulation.ForestrySeconds : Simulation.MineSeconds);
+                Equal(kind, sim.GetTile(coord).Building, "Final cargo lost its source building.");
+                Check(sim.GetStatus(coord).Contains("Final delivery"), "Final delivery status was missing.");
+                int timber = sim.State.Stock.Timber;
+                int ore = sim.State.Stock.Ore;
+                int metal = sim.State.Stock.Metal;
+                Simulation loaded = new Simulation(Clone(sim.State));
+                sim.Tick(0.625f);
+                Equal(kind, sim.GetTile(coord).Building, "Extractor cleared before cargo arrived.");
+                sim.Tick(0.125f);
+                loaded.Tick(0.75f);
+                Equal(Save(sim.State), Save(loaded.State), "Final delivery cleanup diverged after loading.");
+                Equal(BuildingKind.None, sim.GetTile(coord).Building, "Delivered extractor remained.");
+                Check(sim.GetTile(coord).HasRoad, "Cleanup lost the access road.");
+                Equal(0, sim.State.Shipments.Count, "Final shipment remained after arrival.");
+                sim.Tick(100);
+                Equal(timber + (kind == BuildingKind.Forestry ? 3 : 0), sim.State.Stock.Timber, "Final timber yield or construction refund.");
+                Equal(ore + (kind == BuildingKind.Mine ? 1 : 0), sim.State.Stock.Ore, "Final ore yield.");
+                Equal(metal, sim.State.Stock.Metal, "Cleanup refunded construction metal.");
+                Check(sim.TryBuild(coord, BuildingKind.Smelter, out _), "Cleared site could not be reused.");
+                new Simulation(Clone(sim.State));
+            }
+        }
+
+        private static void ManualExtractorCleanup()
+        {
+            foreach (BuildingKind kind in new[] { BuildingKind.Forestry, BuildingKind.Mine })
+            foreach (bool delivering in new[] { false, true })
+            foreach (bool connected in new[] { false, true })
+            {
+                if (delivering && !connected) continue;
+                Simulation sim = Simulation.Create();
+                HexCoord coord = new HexCoord((kind == BuildingKind.Forestry ? -1 : 1) * (connected ? 1 : 2), 0);
+                if (!connected) Check(sim.TryClaim(coord, out _), "Frontier claim failed.");
+                Check(sim.TryBuild(coord, kind, out _), "Extractor build failed.");
+                int timber = sim.State.Stock.Timber;
+                int ore = sim.State.Stock.Ore;
+                int trees = sim.GetTile(coord).TreesRemaining;
+                int deposit = sim.GetTile(coord).OreRemaining;
+                sim.Tick(delivering ? (kind == BuildingKind.Forestry ? Simulation.ForestrySeconds : Simulation.MineSeconds) : 0.5f);
+                GatherToRemaining(sim, coord, 0);
+                Equal(delivering ? kind : BuildingKind.None, sim.GetTile(coord).Building, "Manual depletion cleanup timing.");
+                Equal(0f, sim.GetTile(coord).WorkProgress, "Depleted extractor kept partial work.");
+                new Simulation(Clone(sim.State));
+                sim.Tick(1);
+                Equal(BuildingKind.None, sim.GetTile(coord).Building, "Manually exhausted extractor remained.");
+                Check(sim.GetTile(coord).HasRoad, "Manual cleanup lost the access road.");
+                Equal(timber + trees * 3, sim.State.Stock.Timber, "Manual and automatic timber were lost or duplicated.");
+                Equal(ore + deposit, sim.State.Stock.Ore, "Manual and automatic ore were lost or duplicated.");
+                new Simulation(Clone(sim.State));
+            }
+        }
+
+        private static void CleanupPreservesRoutes()
+        {
+            Simulation sim = Simulation.Create();
+            HexCoord frontier = new HexCoord(2, 0);
+            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Near mine build failed.");
+            GatherToRemaining(sim, Mine, 1);
+            int initialOre = sim.State.Stock.Ore;
+            Check(sim.TryClaim(frontier, out _) && sim.TryBuild(frontier, BuildingKind.Mine, out _), "Frontier mine failed.");
+            sim.Tick(5.75f);
+            Equal(BuildingKind.None, sim.GetTile(Mine).Building, "Exhausted transit building remained.");
+            Check(sim.State.Shipments.Single().Path.Contains(Mine), "Expected delivery through the cleared site.");
+            Equal(3, sim.GetPathToDepot(frontier).Count, "Cleanup disconnected the frontier.");
+            Simulation loaded = new Simulation(Clone(sim.State));
+            sim.Tick(7.25f);
+            loaded.Tick(7.25f);
+            Equal(Save(sim.State), Save(loaded.State), "A shipment across the cleared site failed after loading.");
+            Equal(initialOre + 5, sim.State.Stock.Ore, "Frontier deliveries stopped or duplicated after cleanup.");
+        }
+
+        private static void LegacyExtractorCleanup()
+        {
+            Simulation sim = Simulation.Create();
+            GatherToRemaining(sim, Forest, 0);
+            GatherToRemaining(sim, Mine, 0);
+            // Version-1 saves allowed depleted, idle buildings without explicit roads.
+            sim.GetTile(Forest).Building = BuildingKind.Forestry;
+            sim.GetTile(Mine).Building = BuildingKind.Mine;
+            Simulation loaded = new Simulation(Clone(sim.State));
+            int timber = loaded.State.Stock.Timber;
+            int ore = loaded.State.Stock.Ore;
+            loaded.Tick(0.125f);
+            foreach (HexCoord coord in new[] { Forest, Mine })
+            {
+                Equal(BuildingKind.None, loaded.GetTile(coord).Building, "Legacy exhausted building remained.");
+                Check(loaded.GetTile(coord).HasRoad, "Legacy cleanup lost its network tile.");
+            }
+            Equal(timber, loaded.State.Stock.Timber, "Legacy cleanup awarded timber.");
+            Equal(ore, loaded.State.Stock.Ore, "Legacy cleanup awarded ore.");
+            Equal(BuildingKind.Depot, loaded.GetTile(new HexCoord(0, 0)).Building, "Cleanup removed the depot.");
+            new Simulation(Clone(loaded.State));
+        }
+
+        private static void GatherToRemaining(Simulation sim, HexCoord coord, int remaining)
+        {
+            TileState tile = sim.GetTile(coord);
+            while (tile.TreesRemaining > remaining) Check(sim.TryHarvest(coord, out _), "Hand gathering failed.");
+            while (tile.OreRemaining > remaining) Check(sim.TryExcavate(coord, out _), "Hand mining failed.");
         }
 
         private static void SharedSmeltingInputs()
@@ -253,6 +374,7 @@ namespace AlphaHex.SimulationChecks
                 Equal(originalOre, equivalentOre, "Ore was lost or duplicated between world, inputs and output.");
             }
             Equal(initialMetal + 18, sim.State.Stock.Metal, "36 ore should eventually yield 18 metal.");
+            Equal(BuildingKind.Smelter, sim.GetTile(Smelter).Building, "An idle smelter was removed.");
         }
 
         private static void DeliverySaveContinuity()

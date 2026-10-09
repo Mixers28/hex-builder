@@ -1,24 +1,25 @@
 {
-  "files.exclude": {
-    "**/*.meta": true,
-    "Library": true,
-    "Temp": true,
-    "Logs": true,
-    "obj": true
-  },
-  "search.exclude": {
-    "Library/**": true,
-    "Temp/**": true,
-    "Logs/**": true,
-    "Builds/**": true,
-    "**/bin/**": true,
-    "**/obj/**": true
-  },
-  "files.associations": {
-    "*.unity": "yaml",
-    "*.prefab": "yaml",
-    "*.asset": "yaml"
-  },
-  "editor.formatOnSave": true,
-  "editor.tabSize": 4
+    "files.exclude": {
+        "**/*.meta": true,
+        "Library": true,
+        "Temp": true,
+        "Logs": true,
+        "obj": true
+    },
+    "search.exclude": {
+        "Library/**": true,
+        "Temp/**": true,
+        "Logs/**": true,
+        "Builds/**": true,
+        "**/bin/**": true,
+        "**/obj/**": true
+    },
+    "files.associations": {
+        "*.unity": "yaml",
+        "*.prefab": "yaml",
+        "*.asset": "yaml"
+    },
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "dotnet.defaultSolution": "alpha-hex-builder.slnx"
 }

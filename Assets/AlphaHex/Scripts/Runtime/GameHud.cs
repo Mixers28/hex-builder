@@ -40,6 +40,8 @@ namespace AlphaHex.Runtime
         private float confirmNewUntil;
         private float confirmRemoveUntil;
         private HexCoord? confirmationCoord;
+        private BuildingKind confirmationBuilding;
+        private bool confirmationRoad;
 
         public void Initialize(GameBootstrap controller)
         {
@@ -241,8 +243,7 @@ namespace AlphaHex.Runtime
             gatherLabel.text = tile.TreesRemaining > 0 ? "Gather timber  +3" : "Hand-mine ore  +1";
             demolish.interactable = tile.Claimed && tile.Building != BuildingKind.Depot &&
                 (tile.Building != BuildingKind.None || tile.HasRoad);
-            bool confirmRemoval = Time.unscaledTime < confirmRemoveUntil && confirmationCoord.HasValue &&
-                                  confirmationCoord.Value.Equals(tile.Coord);
+            bool confirmRemoval = RemovalConfirmed(tile);
             demolitionLabel.text = confirmRemoval ? "Confirm removal / no refund" : "Remove building or road";
         }
 
@@ -272,7 +273,9 @@ namespace AlphaHex.Runtime
 
         private void ConfirmRemove()
         {
-            if (Time.unscaledTime < confirmRemoveUntil && confirmationCoord == game.Selected)
+            TileState tile = game.Selected.HasValue ? game.Simulation.GetTile(game.Selected.Value) : null;
+            if (tile == null) return;
+            if (RemovalConfirmed(tile))
             {
                 confirmRemoveUntil = 0;
                 game.DemolishSelected();
@@ -280,10 +283,16 @@ namespace AlphaHex.Runtime
             else
             {
                 confirmationCoord = game.Selected;
+                confirmationBuilding = tile.Building;
+                confirmationRoad = tile.HasRoad;
                 confirmRemoveUntil = Time.unscaledTime + 4;
             }
             Refresh();
         }
+
+        private bool RemovalConfirmed(TileState tile) => Time.unscaledTime < confirmRemoveUntil
+            && confirmationCoord == tile.Coord && confirmationBuilding == tile.Building
+            && confirmationRoad == tile.HasRoad;
 
         private void UpdateSafeArea()
         {

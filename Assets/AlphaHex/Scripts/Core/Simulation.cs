@@ -211,6 +211,7 @@ namespace AlphaHex.Core
             }
             AddToStock(ResourceKind.Timber, TimberPerTree);
             message = "Hand gathered 3 timber. " + tile.TreesRemaining + " trees remain.";
+            if (TryClearDepletedExtractor(tile)) message += " Camp removed; access road kept.";
             return true;
         }
 
@@ -224,6 +225,7 @@ namespace AlphaHex.Core
             RemoveOre(tile, 1);
             AddToStock(ResourceKind.Ore, 1);
             message = "Hand mined 1 ore. " + tile.OreRemaining + " ore remain.";
+            if (TryClearDepletedExtractor(tile)) message += " Mine removed; access road kept.";
             return true;
         }
 
@@ -302,13 +304,13 @@ namespace AlphaHex.Core
 
             Shipment shipment = FindShipment(coord);
             if (shipment != null)
-                return "Delivering " + shipment.Amount + " " + shipment.Resource.ToString().ToLowerInvariant()
-                    + ". Arrival in " + Math.Max(0, shipment.Duration - shipment.Elapsed).ToString("0.0", CultureInfo.InvariantCulture) + " s.";
+                return (IsDepletedExtractor(tile) ? "Final delivery: " : "Delivering ")
+                    + shipment.Amount + " " + shipment.Resource.ToString().ToLowerInvariant()
+                    + ". Arrival in " + Math.Max(0, shipment.Duration - shipment.Elapsed).ToString("0.0", CultureInfo.InvariantCulture) + " s."
+                    + (IsDepletedExtractor(tile) ? " Building clears on arrival; road stays." : "");
 
-            if (tile.Building == BuildingKind.Forestry && tile.TreesRemaining == 0)
-                return "Forest cleared. Develop another forest or remove this building.";
-            if (tile.Building == BuildingKind.Mine && tile.OreRemaining == 0)
-                return "Ore depleted. Quarry depth " + tile.ExcavationDepth + ". Develop another deposit.";
+            if (IsDepletedExtractor(tile))
+                return "Site exhausted. Building clears when simulation resumes; road stays.";
 
             if (tile.Building != BuildingKind.None)
             {
@@ -384,6 +386,25 @@ namespace AlphaHex.Core
                 AddToStock(shipment.Resource, shipment.Amount);
                 State.Shipments.RemoveAt(i);
             }
+
+            // Also clears exhausted buildings restored from older saves. Keep each
+            // source until its final cargo arrives so in-flight saves remain valid.
+            foreach (TileState tile in _orderedTiles) TryClearDepletedExtractor(tile);
+        }
+
+        private static bool IsDepletedExtractor(TileState tile) =>
+            tile.Building == BuildingKind.Forestry && tile.TreesRemaining == 0
+            || tile.Building == BuildingKind.Mine && tile.OreRemaining == 0;
+
+        private bool TryClearDepletedExtractor(TileState tile)
+        {
+            if (!IsDepletedExtractor(tile) || FindShipment(tile.Coord) != null) return false;
+            tile.Building = BuildingKind.None;
+            tile.WorkProgress = 0;
+            // Buildings already carry roads and other producers' deliveries. Retain
+            // that connection when removing the structure, without refunding its cost.
+            tile.HasRoad = true;
+            return true;
         }
 
         private void EnsureNetwork()

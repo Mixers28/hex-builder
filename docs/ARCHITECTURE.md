@@ -40,6 +40,8 @@ The prototype deliberately simplifies refinery input: a connected smelter reserv
 
 Keep the distinction between stored goods, reserved inputs, and goods in transit explicit. Dispatch, travel, and arrival must not grant the same resource more than once. Production and transport rules belong in Core; animation must not award goods when an object reaches a visual destination. Demolition does not refund construction costs. It returns reserved, unprocessed ore where relevant and rejects removal of the depot or a tile used by an active shipment.
 
+Core automatically clears exhausted forestry and mines once their own outbound shipment has arrived. Clearing retains an access road, preserving the network topology and other shipments that cross the site. Manual gathering clears an exhausted idle extractor immediately; fixed-step cleanup also handles depleted buildings in older saves. No save schema change or construction refund is involved. The presentation refreshes the changed building from state.
+
 Core advances in fixed 0.125-second steps and preserves the fractional remainder in state. Runtime supplies foreground frame time at the selected 1x or 2x speed, caps the contribution of a long frame, and can pause advancement. Saving a timestamp does not authorize offline production or a wall-clock catch-up calculation. There is no background simulation service.
 
 ## Persistence
