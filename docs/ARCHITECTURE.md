@@ -1,77 +1,71 @@
 # Architecture
 
-## Purpose and boundaries
+## Active project and boundary
 
-This is a local Unity 6.3 town and industry builder prototype. The exact Editor patch is pinned in `ProjectSettings/ProjectVersion.txt`; use that value rather than selecting an arbitrary Unity release. The playable world consists of raised hex columns with staged quarry depth. It is not a general voxel terrain engine.
+The active game is `godot/project.godot`, using standard Godot **4.7.2** and GDScript. `godot/engine-version.txt` records the editor patch. The root Unity project and C# console verifier are preserved as a [legacy baseline](UNITY_ARCHITECTURE.md); they are not dependencies of the Godot game.
 
-The main boundary is between game rules and their presentation. Core code can run without Unity. Unity renders the current state, collects input, advances the simulation, and handles local persistence.
+The user requested the engine change on 2026-10-10. This deliberately moves active persistence from Unity public-field `JsonUtility` records to validated Godot JSON dictionaries/arrays. No Unity Core files, `.meta` GUIDs or original saves were rewritten.
 
-| Area | Main types | Responsibility |
-| --- | --- | --- |
-| Core coordinates | `HexCoord` | Hex positions, neighbours, and distance calculations. |
-| Core state | `WorldState`, `TileState`, `Shipment` | Serializable gameplay data: terrain, claims, resources, buildings, stock, and goods in transit. |
-| Core guidance | `SettlementGuide`, `SettlementObjective` | Derive an actionable next site from depletion, production and claims without changing state or adding save fields. |
-| Core rules | `Simulation`, `TownRules` | Generation, commands, connectivity, production, immigration, meals, staffing, research and tree growth. |
-| Save migration | `Simulation.Restore` in `WorldMigration` | Explicit schema-1 to schema-2 copy and validation. |
-| Runtime coordination | `GameBootstrap` | Create or load a session, connect runtime components, and advance Core. |
-| Runtime presentation | `HexWorldView`, `OrbitCamera` | Build the procedural scene from state and provide world navigation. |
-| Runtime interface | `GameHud` | Show state and feedback; translate player intent into validated commands. |
-| Editor tooling | `ProjectSetup` | Set up the playable project and scene in the Unity Editor. |
+| File under `godot/` | Responsibility |
+| --- | --- |
+| `core/rules.gd` | Costs, times, research prerequisites, capacities and hex arithmetic. |
+| `core/simulation.gd` | Authoritative state, deterministic region generation, validated commands, fixed-step town/production rules, routes and save validation. |
+| `core/save_store.gd` | Versioned JSON I/O, temporary-file replacement, backup recovery, Unity schema 1/2 conversion. |
+| `runtime/game.gd` | Session lifecycle, camera/input, command feedback and save/import actions. |
+| `runtime/world_art.gd` | Original procedural meshes, palette and staged excavation surfaces. |
+| `runtime/world_view.gd` | Revealed terrain/colliders, fog border, selection, census figures and actual shipment carts. |
+| `runtime/game_hud.gd` | Resource strip, construction, workforce, research, inspector and menus. |
+| `tests/simulation_checks.gd` | Headless checks against actual Core scripts, including serialization and storage. |
+| `tests/frontier_scenario.gd` | Reproducible resource-funded play path through normal simulation commands. |
+| `tests/runtime_smoke.gd` | Rendered input/UI checks and screenshots; no normal-save access. |
+| `tests/display_checks.gd` | Native fullscreen and resize regression checks, measured button dimensions, framebuffer captures and scaled pointer input. |
 
 ## State and commands
 
-The world is deterministic for a given seed and generation implementation. Its initial radius is six hexes, with the radius-one area around the starting base already claimed. Determinism makes new sessions and rule tests reproducible; it does not make different future generator versions interchangeable.
+`Simulation.state` owns town-wide data; `Simulation.tiles` maps canonical axial coordinate strings to revealed tile records. Meshes, controls and moving people are views, not alternate inventories. Runtime submits `try_claim`, `try_build`, `try_road`, `try_workers`, `try_pause_work`, `try_gather`, `try_forage`, `try_research`, `try_upgrade` and `try_remove`. Invalid commands explain the rejection without partial spending.
 
-`WorldState` is the gameplay source of truth. The scene must not become an alternative inventory, building registry, or terrain database. A mesh, label, material, or animated carrier is a view of state.
+The simulation advances in fixed 0.125-second steps with a serialized remainder. Runtime supplies foreground time at 1× or 2×, caps a single frame's contribution at 0.25 seconds, and supports pause. The clock does not consult real time on load. New seeds use real time only when explicitly creating another settlement.
 
-Player actions follow this sequence:
+Homes and employment are independent. Four pioneers live at the hall; each cottage adds four places. Supported migrants occupy connected housing in stable discovery order. Production crews are explicit saved counts, bounded by each workplace and the total population. A new migrant stays available until assigned. Crew changes retain legitimate work and foundry reservations; pause releases a crew.
 
-1. A runtime component identifies the selected tile and requested action.
-2. The HUD or bootstrap submits the corresponding `Simulation.Try*` command.
-3. Core validates the action, including relevant tile, ownership, resource, and cost conditions.
-4. A successful command changes state. A rejected command returns feedback without partially spending stock or placing a building.
-5. The runtime refreshes the relevant presentation.
+## Regions and presentation
 
-Unity input handlers must not directly subtract stock, grant resources, claim tiles, or place production buildings. New actions belong in Core before being wired into the interface.
+New games generate only a radius-three starting area. Seed and integer coordinate hashing determine subsequent terrain/deposits; guaranteed starting resources and the first stone opportunities keep the initial research chain reachable. A connected wooden tower reveals radius four; reinforcement reveals radius six. All generated coordinates are within radius 16 (817 total). Revelation creates no ownership or stock, never replaces existing deposits, and survives tower removal.
 
-## Production and transport
+Unknown cells have no simulation tile and cannot be inspected or claimed. Presentation generates only a neutral two-ring fog border beyond known terrain and an unbounded-looking background; it does not render hidden terrain or expose the maximum boundary through camera limits. Camera bounds follow revealed tiles. The world is bounded, not an endless-world implementation.
 
-The depot stock is shared. Roads and buildings form the transport network. Outbound production reaches that stock through shipments with physical travel delay; visible movement must reflect the same route and progress used by the simulation. Each producer waits for its own shipment to arrive before starting its next production cycle. A longer route therefore reduces that producer's effective output rate.
+Hex radius is 2.35 world units with small cottages, yards and work details within each plot. Extraction changes surface height in three surface-ore stages, three deeper stages and three stone stages. Roads and picking colliders use the same surface function. ArrayMesh triangle winding is clockwise, with outward normals.
 
-The prototype deliberately simplifies refinery input: a connected smelter reserves ore from shared network stock. It does not request a separate inbound delivery. Consequently this is not a complete two-way logistics simulation, even though outbound goods have travel time. Manual gathering credits the depot immediately, including when the selected tile is disconnected; this is a separate bootstrap action, not a shipment.
+Citizen figures follow cosmetic home/work routes derived from census and crews. Shipment carts interpolate the exact saved route and elapsed/duration values. Neither animation awards goods. Terrain refresh signatures include changed structures, resources, excavation and sapling stages. Rendering a full supported map has a different evidence requirement from validating its save size.
 
-Keep the distinction between stored goods, reserved inputs, and goods in transit explicit. Dispatch, travel, and arrival must not grant the same resource more than once. Production and transport rules belong in Core; animation must not award goods when an object reaches a visual destination. Demolition does not refund construction costs. It returns reserved, unprocessed ore where relevant and rejects removal of the depot or a tile used by an active shipment.
+The HUD uses a 1440×900 reference with `canvas_items` stretch and `expand` aspect, following Godot's [multiple-resolution guidance](https://github.com/godotengine/godot-docs/blob/4.7/tutorials/rendering/multiple_resolutions.rst). Logical Control coordinates scale with window size, including macOS Retina fullscreen, while the framebuffer remains at native window resolution. Existing anchors and resize layout handle the extra space at different aspect ratios. OS input is transformed by Godot; runtime must not apply a second UI scale to mouse coordinates. Synthetic input tests convert logical positions to window pixels with `Viewport.get_final_transform()` before calling `Input.parse_input_event()`.
 
-Core automatically clears exhausted forestry and mines once their own outbound shipment has arrived. Clearing retains an access road, preserving the network topology and other shipments that cross the site. Manual gathering clears an exhausted idle extractor immediately; fixed-step cleanup also handles depleted buildings in older saves. Managed logging camps next to foresters remain for future regrowth. Deep mines follow the same final-cargo cleanup rule. No construction refund is involved. The presentation refreshes the changed building from state.
+## Goods and logistics
 
-Core advances in fixed 0.125-second steps and preserves the fractional remainder in state. Runtime supplies foreground frame time at the selected 1x or 2x speed, caps the contribution of a long frame, and can pause advancement. Saving a timestamp does not authorize offline production or a wall-clock catch-up calculation. There is no background simulation service.
+Roads and buildings form a breadth-first route to the single village hall. A producer dispatches one batch and waits for that cart to arrive before working again. Travel costs 1.25 seconds per edge; imported cargo retains its original 0.75-second-per-edge trip until delivered. Longer routes still reduce throughput even with more workers.
 
-HUD inventory reads available stock, shipment totals, and reserved ore separately. Production status and progress come from Core queries; displaying them does not advance the simulation. The goal card selects a site through the bootstrap and focuses the orbit camera without issuing a purchase. Collapsed panels are inactive so they cannot intercept terrain input.
+A foundry reserves two ore from shared stock before work and turns them into one metal. This is not an inbound ore delivery simulation. Stored, reserved and travelling goods are accounted for separately and bounded together by the resource counter capacity. Manual resource recovery credits stores directly on owned land.
 
-## Town rules and presentation
-
-`TownState` persists the census, research bit flags, earned milestones, meal and immigration progress, missed-meal flag and manual-forage cooldown. Tiles store residents, work pause, finite deep reserves and a single growing sapling. Public fields and lists remain compatible with `JsonUtility`; no Unity types or dictionaries enter the save format.
-
-Staffing is derived from connected, unpaused workplaces, prioritizing food then stable coordinate order. The network/staff caches are invalidated by construction, connections, population growth and exhausted-site cleanup. Jobs require staff, but cargo already dispatched continues after a workplace is paused.
-
-Town growth, meals and sapling maturation use the same saved fixed-step clock as production. Visible citizens derive from the census; their cosmetic travel never modifies jobs or goods. `TownHud` submits research, construction and work-pause commands through the bootstrap. Generated PNG illustrations load from Resources; original prompts and provenance are in `ART.md`.
+Finite deposits decrease at dispatch, never at both dispatch and arrival. Depleted extractors clear after final delivery, releasing crews while retaining access roads. Logging beside a tree nursery remains for regrowth. Removal refunds no construction materials, returns unused reserved ore once, and rejects occupied houses, the hall and active cargo routes. UI removal confirmation is tied to the current building/road so automatic depletion cannot reuse a building confirmation to remove its road.
 
 ## Persistence
 
-Runtime persistence uses a local, versioned `JsonUtility` save. Persist plain gameplay data, not `GameObject` references, materials, meshes, camera objects, or transient selection highlights. Recreate visuals from validated state after loading.
+Schema 3 stores counts, flags, resource reserves, worker/resident allocation, clocks, research jobs, discoveries and shipments as plain JSON values. JSON numbers are normalized to integer count fields only after validation. Tile discovery order is retained because it breaks ties for immigration and work.
 
-Treat a save file as input that can be missing, damaged, edited, or from another version. Validate the format version and gameplay structure before replacing the active session. `Simulation.Restore` explicitly migrates schema 1 to schema 2 on a copy, preserving the old clock, deposits, construction, reserved input and in-flight cargo. It introduces four pioneers, 24 food and deep reserves equal to twice each deposit's original ore. Current-schema reloads never repeat these grants. Unknown schemas are rejected. `new Simulation(state)` remains strict current-schema validation, including before saving.
+Load validates coordinates, uniqueness, terrain/deposit compatibility, contiguous claimed territory, census and crew limits, prerequisite-backed buildings/research, job/input consistency, cargo sources/routes/times/batches, and total committed goods before changing the session. Rejected input leaves live state unchanged.
 
-Validation must protect the same invariants as player commands: valid coordinates and tile identities, legal enum values, nonnegative finite quantities and progress, consistent stock and resource fields, and coherent shipment routes. A loader must not leave a partly restored world active after rejecting a save.
+Writes validate first, flush a temporary sibling file, preserve the previous valid primary as `.bak`, then rename the temporary file. A corrupt primary never replaces a good backup. These protections cover normal application failures; they are not a claim of fsync-level power-loss durability. Startup tries primary then backup; failure disables autosave until an explicit save or replacement.
 
-The runtime normally autosaves every 30 seconds and attempts to save on application suspension and exit. A valid prior primary save can provide a recovery backup. An unreadable save discovered at startup disables automatic overwrite for that session until an explicit successful save or world replacement.
+`game.save_game()` reports success. The menu's Save & Exit action calls it synchronously and quits only after a successful write; failure leaves the session open with the storage error. Window-close requests use this same path when autosaving is enabled. If startup disabled automatic writes, window closure retains its existing no-write behavior to protect the unreadable save. QA sessions cannot save or exit through the menu action.
 
-The separate Previous island archive stores the active island immediately before a confirmed New operation. It survives routine autosaves and is distinct from the ordinary save backup. Previous loads that single archive; it does not swap worlds or create a history of every island. New archives and saves successfully before replacing the active simulation.
+The Unity importer copies schema 1/2 records. It retains all 127 known coordinates, finite reserves, stock, houses, residents, research, meal/migration/forage clocks, paused work, foundry input and travelling cargo. Job progress retains its completion fraction under the new durations. Sapling growth is scaled from 45 to 90 seconds. Schema 1 receives its one-time four-pioneer/24-food/deep-reserve migration. Schema 2 retains its town. The old food-first, coordinate-ordered staffing becomes initial manual crew assignments; further arrivals do not auto-assign. Unspent old milestone credits remain valid for the original three technologies. The original selected file is never written.
 
-## Development and tests
+Only successful archive and new-save writes replace a settlement during New or Import. There is one separate previous-settlement slot, not a history or a swap feature. Native and legacy user directories stay separate.
 
-The console test project targets .NET 10 with C# 9 language compatibility. It links the same Core source files used by Unity and requires no NuGet test framework. Do not copy Core into a separate test implementation, or use .NET 10-only APIs in source that must also compile in Unity.
+## Verification boundaries
 
-Keep Core free of `UnityEngine`, `UnityEditor`, frame input, scene objects, and Unity serialization callbacks. Unity-specific setup and presentation need separate Editor and device validation. A successful console run verifies only the exercised rules, not the Unity import, rendering, touch controls, or iOS export.
+`godot/export_presets.cfg` defines a Windows Desktop x86_64 release, using pinned official templates cached outside the active project. `tools/export_windows.py` verifies templates, exports the EXE/PCK, includes the play guide and engine notices, and packages a fixed file list. See [Windows builds](WINDOWS_BUILD.md). The release's resource pack is verified with the same QA scripts as the workspace; `ALPHA_HEX_QA_OUTPUT` selects an absolute writable test directory because packed resources are read-only. Gameplay continues to use its existing `user://` save store.
 
-This is a local prototype. It has no multiplayer synchronization, authenticated command processing, server authority, or adversarial client boundary. Separating rules from presentation is useful groundwork, but does not make the game ready for networked play.
+Headless checks preload production scripts rather than reimplementing the rules. The scripted frontier scenario spends through validated commands and uses the documented manual recovery actions; focused edge-case fixtures may deliberately set prerequisite or resource state. Rendered QA separately tests controls, picking, layouts and captures actual game frames.
+
+[VERIFICATION.md](VERIFICATION.md) records what ran. Automated inputs and synthetic gestures do not establish human usability, enjoyable pacing, weeks of replayability, mobile performance or export success. The game has no network authority, multiplayer, combat, arbitrary tunnels or background simulation service.

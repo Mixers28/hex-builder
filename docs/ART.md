@@ -1,3 +1,5 @@
+> Active Godot presentation is original code-generated geometry in `godot/runtime/world_art.gd`: larger plots, rustic buildings, trees, workers and carts. It uses none of the PNG illustrations below. These retained prompts and assets document the Unity baseline.
+
 # Original Town Art
 
 The house, farm and forester illustrations were generated with the built-in imagegen tool on 2026-10-09 for this project. They are transparent PNG construction-card art and references for the procedural 3D silhouettes; they are not 3D models or imported Manor Lords artwork.

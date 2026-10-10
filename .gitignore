@@ -46,3 +46,7 @@ Thumbs.db
 /tools/local-settings.json
 /local-*.json
 *.tmp
+
+# Godot generated import/editor cache; source .uid files are tracked.
+**/.godot/
+/godot/qa-output/

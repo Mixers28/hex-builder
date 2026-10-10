@@ -1,0 +1,97 @@
+ALPHA HEX - FIRST FRONTIER
+Windows playtest 0.1.0
+
+A small, early single-player settlement-building demo. Welcome new citizens,
+assign workers, discover stone beyond the fog, and reinforce a watchtower.
+The longer game is still being developed. Armies, animals, rival villages and
+boats are future plans; they are not in this demo.
+
+START PLAYING
+
+1. Right-click the downloaded ZIP and choose Extract All.
+2. Open the extracted AlphaHex folder.
+3. Double-click AlphaHex.exe.
+
+Keep AlphaHex.pck beside AlphaHex.exe. No Godot installation, account, internet
+connection or administrator installation is needed to play.
+
+Target: Windows 10/11, 64-bit Intel or AMD PC, mouse and keyboard, and a graphics
+driver supporting OpenGL 3.3. This is an unsigned preview, so Windows may show
+an unknown-publisher warning. A real Windows launch/performance test is still
+pending; the export and the packed game have been checked on the developer's Mac.
+
+Maximize the window for more space. The interface scales with the window.
+
+YOUR FIRST VILLAGE
+
+Plot coordinates appear in the right-hand inspector after you click a hex.
+
+1. Build [B] a Cottage at (0,1), then a Forager lodge at (-1,1).
+   Choose the building, click its plot, then click the inspector's Build button.
+   Open Workers [T] and give the lodge one worker.
+2. Build a Woodcutter at (-1,0), an Iron mine at (1,0), and a Foundry at (1,-1).
+   Give each one worker. Goods reach your stores when their carts arrive.
+3. Build another Cottage, for example at (0,-1), and keep food supplied.
+   Homes fill gradually; assign each new worker yourself. Keep at least
+   6 timber and 1 metal in reserve for another resource claim.
+4. At six citizens, research Frontier surveying [R]. Claim (0,2) and connect a
+   Watchtower through the cottage at (0,1). The tower reveals more land.
+5. Discover stone at (0,5), research Stoneworking, then Quarrying tools at
+   eight citizens. Claim (0,3), (0,4) and (0,5), road the first two, then build
+   and staff a Stone quarry on (0,5).
+6. At ten citizens, research Frontier masonry. Use delivered stone to reinforce
+   your Watchtower and see further into the frontier.
+
+You can continue growing after this milestone. The map and content are limited;
+there is no victory screen. More workers speed up work, but crews still wait
+for their deliveries. Trees and mineral deposits run out. Manual gathering on
+owned plots can help you recover; it does not refill exhausted resources.
+
+CONTROLS
+
+Left click                 Select a plot
+B / T / R                  Build / Workers / Research
+1 / 2 / 3                  Inspect / Claim / Road
+Enter                      Apply the selected action
+WASD or arrow keys         Pan
+Middle-button drag         Pan
+Q / E or right-button drag Orbit
+Mouse wheel                Zoom
+Home or 7                  Return to the village
+Space                      Pause / resume
+Top-bar 1x / 2x button     Change speed
+F on grass or woodland     Emergency food (eight-second cooldown)
+F5 / F9                    Save / load
+M                          Settlement menu
+Menu > Save & Exit         Save your village and close the game
+Escape                     Close a panel
+
+SAVES AND PROBLEMS
+
+Choose Menu [M] > Save & Exit to save your current village and close the game.
+It resumes automatically next time you launch. If saving fails, an error is
+shown and the game stays open so you can retry.
+
+The game also saves automatically every 30 seconds and on normal window closure
+when autosave is enabled. It progresses only while running. Each friend's
+computer keeps its own town.
+Use Menu > Begin a new settlement to restart; the previous village is archived.
+
+Windows saves: %APPDATA%\AlphaHexFrontier\
+Main file: frontier.json; fallback: frontier.json.bak
+Log: %APPDATA%\AlphaHexFrontier\logs\godot.log
+
+If launching fails, share the exact error or the log with the developer.
+Keep the EXE and PCK together and ensure the ZIP was fully extracted.
+
+FEEDBACK
+
+Try a 20-30 minute session and tell the developer:
+- Did you understand building, immigration and assigning workers?
+- Were the text and buttons comfortable when maximized and windowed?
+- Where did you get stuck, wait too much, or run out of interesting choices?
+- What made you want to keep growing the village?
+
+This game uses Godot Engine 4.7.2. Engine and third-party notices accompany it
+in GODOT_LICENSE.txt and GODOT_COPYRIGHT.txt.
+Engine information: https://godotengine.org/license/
