@@ -79,3 +79,7 @@ Validate the export and its actual packed resources on the Mac, and explicitly l
 ## 2026-10-10 Save & Exit
 
 Source: the user asks to attach Save & Exit to the current version for players. Add the action to the settlement menu [M] and refresh the Windows playtest ZIP. Save through the existing validated store before quitting; display an error and keep the game open if the write fails. Normal window closure also checks save success when autosaving is enabled. Retain the existing startup protection for unreadable saves, QA isolation, save schema and active-play-only progression. Verification and distribution results are recorded in [VERIFICATION.md](VERIFICATION.md).
+
+## 2026-10-10 Public repository and Windows download
+
+Source: the user requested committing/pushing the work, explicitly chose public `Mixers28/hex-builder`, then authorized publishing the Windows ZIP as a GitHub Release. The [public prerelease v0.1.0-playtest.1](https://github.com/Mixers28/hex-builder/releases/tag/v0.1.0-playtest.1) publishes the tested Save & Exit build from commit `f42965ab405ed74458911b5ebd6328ef2718544f`, with a ZIP checksum and play instructions. Keep generated binaries as release assets and source/export tooling in Git. Prerelease notes retain the outstanding native Windows test; publishing does not establish target-platform compatibility or add game features.

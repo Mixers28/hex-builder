@@ -2,7 +2,7 @@
 
 A playable **Godot 4.7.2** settlement builder: welcome people gradually, assign production crews, reveal a seeded frontier, research quarry tools, and use stone to expand again.
 
-For friends on Windows: [download the Windows x64 playtest ZIP](Artifacts/alpha-hex-first-frontier-windows-x64.zip), extract it, and run `AlphaHex.exe` from the `AlphaHex` folder. Keep `AlphaHex.pck` beside it. The package includes a play guide and needs no Godot installation. Native Windows launch/performance remains to be tested on a PC; see the [Windows build and playtest notes](docs/WINDOWS_BUILD.md).
+For friends on Windows: [download the Windows x64 playtest ZIP](https://github.com/Mixers28/hex-builder/releases/download/v0.1.0-playtest.1/alpha-hex-first-frontier-windows-x64.zip), extract it, and run `AlphaHex.exe` from the `AlphaHex` folder. Keep `AlphaHex.pck` beside it. The package includes a play guide and needs no Godot installation. See the [public prerelease](https://github.com/Mixers28/hex-builder/releases/tag/v0.1.0-playtest.1) for release notes and a checksum. Native Windows launch/performance remains to be tested on a PC; see the [Windows build and playtest notes](docs/WINDOWS_BUILD.md).
 
 Open **[godot/project.godot](godot/project.godot)** in the standard Godot editor and press **F5**. No .NET edition, external assets or package installation is needed. A [complete standalone Godot ZIP](Artifacts/alpha-hex-first-frontier-godot.zip) is also available locally. The previous Unity project is preserved at the repository root; its [historical instructions](docs/UNITY_BASELINE.md) are separate from this active game.
 

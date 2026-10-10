@@ -1,5 +1,13 @@
 # Verification record
 
+## Public Windows prerelease — 2026-10-10
+
+Published [v0.1.0-playtest.1](https://github.com/Mixers28/hex-builder/releases/tag/v0.1.0-playtest.1) in public `Mixers28/hex-builder`, targeting the tested game commit `f42965ab405ed74458911b5ebd6328ef2718544f`. Verified the release is published (`draft=false`) and marked as a prerelease. Its two uploaded assets are the Windows ZIP and an external SHA-256 checksum file.
+
+The **37,984,055-byte** ZIP has SHA-256 `45cadaf0dbe3e3a4c7d5250edc11486c75c6babb18acee4eef43b574af823beb`. GitHub's asset digest matches the local tested artifact. Downloading through the public URL without authentication reproduced that hash and passed ZIP CRC validation. Release notes include installation, Save & Exit, source commit and verification limits. README and playtest handoff links now point to the hosted download.
+
+This publication changes distribution and documentation only. The 86 simulation/save checks, 39 rendered checks and isolated lifecycle results below apply to the unchanged build; they were not rerun. Native Windows execution remains pending.
+
 ## Save & Exit and refreshed downloads — 2026-10-10
 
 Added **Menu [M] → Save & Exit** to the current Godot game. The action saves synchronously and quits only on success. A storage failure displays the existing error and leaves the session open; normal window-close requests use the same checked write while autosaving is enabled. Existing unreadable-startup-save protection, schema and game rules are unchanged.
@@ -17,7 +25,7 @@ The first isolated-project launch lacked the generated script-class cache; impor
 
 Native Windows EXE execution remains **not tested**. The lifecycle check used headless Godot on Mac; window-close notifications were injected, not physical OS-button actions. The 124-check Retina fullscreen suite was not repeated because display settings did not change.
 
-Downloads: [Windows ZIP](../Artifacts/alpha-hex-first-frontier-windows-x64.zip), SHA-256 `45cadaf0dbe3e3a4c7d5250edc11486c75c6babb18acee4eef43b574af823beb`; [Godot source ZIP](../Artifacts/alpha-hex-first-frontier-godot.zip), SHA-256 `49dfc2485d88224fcff25fec97030fa9d4afa1970d67945a36e6e9d253f88222`.
+Downloads: [Windows ZIP](https://github.com/Mixers28/hex-builder/releases/download/v0.1.0-playtest.1/alpha-hex-first-frontier-windows-x64.zip), SHA-256 `45cadaf0dbe3e3a4c7d5250edc11486c75c6babb18acee4eef43b574af823beb`; [local Godot source ZIP](../Artifacts/alpha-hex-first-frontier-godot.zip), SHA-256 `49dfc2485d88224fcff25fec97030fa9d4afa1970d67945a36e6e9d253f88222`.
 
 Evidence: [import](../Artifacts/save-exit/import.log), [lifecycle save/failure/retry](../Artifacts/save-exit/lifecycle-save.log), [lifecycle reload](../Artifacts/save-exit/lifecycle-reload.log), [packed rules](../Artifacts/save-exit/packed-rules.log), [packed runtime](../Artifacts/save-exit/packed-runtime.log), [menu screenshot](../Artifacts/save-exit/packed-runtime/10-save-exit-menu.png), [export](../Artifacts/save-exit/export.log), [package report](../Artifacts/save-exit/package.txt). The isolated fixture and expected records are retained locally under ignored `Artifacts/save-exit/isolated-project/`.
 
