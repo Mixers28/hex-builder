@@ -1,5 +1,17 @@
 # Verification record
 
+## Published Unity Windows playtest — 2026-10-12
+
+Published [v0.2.0-playtest.1](https://github.com/Mixers28/hex-builder/releases/tag/v0.2.0-playtest.1) as a public prerelease targeting **2930c41d2fe81796774327045aecd79d1af401a9**. [Native Windows release gate](https://github.com/Mixers28/hex-builder/actions/runs/38262705259) and [source/update CI](https://github.com/Mixers28/hex-builder/actions/runs/38260894657) both passed. The earlier installed-player precision assertion is resolved as described below.
+
+The actual Windows Mono executable passed headless build/worker/batch/discovery, save/reload, unmodified-source Godot import and failed/successful Save & Exit checks. The installer then created a working per-user installation in a disposable path containing spaces, and the installed launcher/player passed the same checks. A private **0.2.1** fixture was staged locally; the real game update bridge rejected an attempted update with a blocked save, then saved, closed, replaced the installation and automatically relaunched. The restarted game read the same complete settlement from the separate save directory and verified the new package manifest. Both processes logged `ALPHA_HEX_QA_PASS`. The private fixture is not present in the public feed, which contains only **0.2.0**.
+
+Downloaded all release assets and verified the published package checksums, update-feed hash, ZIP CRCs and **181** portable-file hashes against its build manifest. The export's source hashes matched the CI checkout. After publication, the pinned Velopack CLI queried the actual public GitHub channel without an access token, found the single 0.2.0 release, downloaded its full package and verified its checksum. The full source ZIP is **6,140,056 bytes**, SHA-256 `bce21509c758f3f97d3f2c4f530610fa1636b3a0fb764ab53740b176c46eefc2`. Setup is **79,920,798 bytes**, SHA-256 `c1f670558028f9ef1ed994c65d2d89f2c2473d07f224c4207347c4fb3221887d`. Source, screenshots, raw transfer bundle and machine-readable evidence are included in the release checksums.
+
+Local evidence: [Windows verification](../Artifacts/native-windows-passed/verification.json), [update result](../Artifacts/native-windows-passed/update-qa/update-result.json), [installed player](../Artifacts/native-windows-passed/installed-player-qa/player-result.json), and [refreshed Mac measurements](../Artifacts/unity-return/mac-player-release/player-result.json). The refreshed Mac export passed all ten rendered views. Fullscreen controls remained about 93 pixels high at 2560×1600; worker controls were about 84 pixels high.
+
+Limits: Windows graphics/performance and a complete human playthrough remain untested. The replacement test used a locally staged, verified private package; separate checks cover feed parsing/download/hash failures. It does not establish power-loss recovery or all proxy/network conditions. The release is unsigned, so publisher/SmartScreen warnings may remain. This is a bounded opening slice, not weeks of finished content.
+
 ## Unity clay/brick opening and update packaging — 2026-10-12
 
 Active engine: Unity **6000.3.26f1**. Tested locally on the Apple M1 Pro Mac with .NET SDK **10.0.401**. Godot remains a preserved compatibility reference; the previous public release is unchanged until the new release gate passes.

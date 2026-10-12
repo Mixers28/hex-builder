@@ -4,7 +4,9 @@ A Unity settlement builder about people, production and a growing hex frontier. 
 
 The new opening starts with **zero metal**. Clay becomes bricks; a worker-operated bloomery makes the first metal; an efficient foundry automates refining. Citizens move into cottages gradually, workers are assigned manually, and connected watchtowers reveal new land. All world models are generated in code.
 
-The previously released Godot demo is preserved in [`godot/`](godot/README.md). [GitHub Releases](https://github.com/Mixers28/hex-builder/releases) contains published playtests; the older `v0.1.0-playtest.1` ZIP is the Godot version and has no updater. See [Windows distribution](docs/WINDOWS_BUILD.md) for the Unity installer, release procedure and signing status.
+Download the [Windows installer](https://github.com/Mixers28/hex-builder/releases/download/v0.2.0-playtest.1/AlphaHex-win-playtest-Setup.exe) or [complete Unity project ZIP](https://github.com/Mixers28/hex-builder/releases/download/v0.2.0-playtest.1/alpha-hex-unity-0.2.0-project.zip). The [0.2.0 playtest release](https://github.com/Mixers28/hex-builder/releases/tag/v0.2.0-playtest.1) also includes a portable build, screenshots, checksums and verification evidence.
+
+The previously released Godot demo is preserved in [`godot/`](godot/README.md). Its `v0.1.0-playtest.1` ZIP has no updater and needs a one-time Unity installation. See [Windows distribution](docs/WINDOWS_BUILD.md) for release procedures and signing status.
 
 ## Play the opening
 
