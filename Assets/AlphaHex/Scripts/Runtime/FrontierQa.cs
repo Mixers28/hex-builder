@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using AlphaHex.Core;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -44,6 +46,29 @@ namespace AlphaHex.Runtime
             Debug.Log(passed ? "ALPHA_HEX_QA_PASS" : "ALPHA_HEX_QA_FAIL " + string.Join("; ", errors)); Application.Quit(passed ? 0 : 1);
         }
         private static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+        private static void SameState(string expected, string actual)
+        {
+            if (expected == actual) return;
+            // JsonUtility's native double parser can move a remainder by one ULP.
+            // Permit only a picosecond here; every other serialized value stays exact.
+            var beforeClock = Regex.Match(expected, "\"PendingSeconds\":([-+0-9.eE]+)");
+            var afterClock = Regex.Match(actual, "\"PendingSeconds\":([-+0-9.eE]+)");
+            if (beforeClock.Success && afterClock.Success)
+            {
+                double before = double.Parse(beforeClock.Groups[1].Value, CultureInfo.InvariantCulture);
+                double after = double.Parse(afterClock.Groups[1].Value, CultureInfo.InvariantCulture);
+                Require(Math.Abs(before - after) <= 1e-12, "Save changed the partial simulation clock.");
+                var x = beforeClock.Groups[1]; var y = afterClock.Groups[1];
+                expected = expected.Remove(x.Index, x.Length).Insert(x.Index, "0");
+                actual = actual.Remove(y.Index, y.Length).Insert(y.Index, "0");
+                if (expected == actual) return;
+            }
+            int index = 0; while (index < Math.Min(expected.Length, actual.Length) && expected[index] == actual[index]) index++;
+            int start = Math.Max(0, index - 100);
+            throw new InvalidOperationException("Saved state differs at " + index + ". Before: "
+                + expected.Substring(start, Math.Min(220, expected.Length - start)) + " After: "
+                + actual.Substring(start, Math.Min(220, actual.Length - start)));
+        }
         private void Build(HexCoord coord, BuildingKind kind)
         {
             game.Select(coord); game.SetTool((WorldTool)Enum.Parse(typeof(WorldTool), kind.ToString())); game.ApplyTool();
@@ -59,7 +84,7 @@ namespace AlphaHex.Runtime
             if (RuntimeOptions.IsUpdateQa && File.Exists(updateExpected))
             {
                 game.LoadGame(); if (!game.Paused) game.TogglePause();
-                Require(JsonUtility.ToJson(game.Simulation.State) == File.ReadAllText(updateExpected), "Updater restart changed the saved settlement.");
+                SameState(File.ReadAllText(updateExpected), JsonUtility.ToJson(game.Simulation.State));
                 var manifest = JsonUtility.FromJson<PackageManifest>(File.ReadAllText(Path.Combine(Path.GetDirectoryName(Application.dataPath), "alphahex-build.json")));
                 Require(manifest.package_version == Environment.GetEnvironmentVariable("ALPHA_HEX_QA_UPDATE_VERSION"), "Restart used the old installation.");
                 File.WriteAllText(Path.Combine(RuntimeOptions.QaDirectory, "update-result.json"), "{\"passed\":true,\"savePreserved\":true,\"restarted\":true}");
@@ -84,7 +109,7 @@ namespace AlphaHex.Runtime
             Claim(new HexCoord(0, 3)); Build(new HexCoord(0, 3), BuildingKind.Watchtower); game.UpgradeSelectedTower();
             Require(game.Simulation.State.Tiles.Count > 37, "Tower UI did not reveal new land.");
             Require(game.SaveGame(), game.Notice); string expected = JsonUtility.ToJson(game.Simulation.State); game.LoadGame();
-            if (!game.Paused) game.TogglePause(); Require(JsonUtility.ToJson(game.Simulation.State) == expected, "Native player save changed state.");
+            if (!game.Paused) game.TogglePause(); SameState(expected, JsonUtility.ToJson(game.Simulation.State));
             var hud = FindFirstObjectByType<GameHud>(); game.Select(new HexCoord(0, 3)); game.SetTool(WorldTool.Inspect);
             if (!headless)
             {

@@ -66,8 +66,13 @@ internal static class Program
                     try
                     {
                         using var launcher = Process.GetProcessById(request.launcherPid);
-                        if (string.Equals(launcher.MainModule?.FileName, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
-                            await launcher.WaitForExitAsync(timeout.Token);
+                        try
+                        {
+                            if (!launcher.HasExited && string.Equals(launcher.MainModule?.FileName, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+                                await launcher.WaitForExitAsync(timeout.Token);
+                        }
+                        catch (InvalidOperationException) when (launcher.HasExited) { }
+                        catch (System.ComponentModel.Win32Exception) when (launcher.HasExited) { }
                     }
                     catch (ArgumentException) { /* The original launcher has already exited. */ }
                 }

@@ -37,6 +37,19 @@ namespace AlphaHex.Tests
             loaded.Tick(160); Assert.That(loaded.State.Stock.Metal, Is.EqualTo(101)); Assert.That(loaded.GetTile(Processor).BatchRequested, Is.False);
             loaded.Tick(100); Assert.That(loaded.State.Stock.Metal, Is.EqualTo(101));
         }
+        [Test] public void FrameTimeRemaindersRoundTrip()
+        {
+            var sim = Simulation.Create(); var random = new System.Random(417);
+            for (int i = 0; i < 200; i++)
+            {
+                sim.Tick((float)(random.NextDouble() / 10)); var loaded = Reload(sim);
+                Assert.That(loaded.State.PendingSeconds, Is.EqualTo(sim.State.PendingSeconds).Within(1e-12), "Frame " + i);
+                sim.Tick(10.1875f); loaded.Tick(10.1875f);
+                Assert.That(loaded.State.SimulationSteps, Is.EqualTo(sim.State.SimulationSteps));
+                Assert.That(loaded.State.ElapsedSeconds, Is.EqualTo(sim.State.ElapsedSeconds));
+                Assert.That(loaded.State.Stock.Food, Is.EqualTo(sim.State.Stock.Food));
+            }
+        }
         [TestCase("unity-v1")][TestCase("unity-v2")][TestCase("godot-v3")][TestCase("godot-frontier-v3")]
         public void ReleasedSaveFixturesMigrateAndResume(string fixture)
         {
