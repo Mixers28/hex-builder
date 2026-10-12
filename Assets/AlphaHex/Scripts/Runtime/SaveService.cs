@@ -6,141 +6,92 @@ using UnityEngine;
 
 namespace AlphaHex.Runtime
 {
-    /// <summary>Local versioned save data. Never replace a running world until validation succeeds.</summary>
+    /// <summary>Validated local saves. Import reads the source; replacement is a separate explicit action.</summary>
     public static class SaveService
     {
-        public static string SavePath => Path.Combine(Application.persistentDataPath, "alpha-hex-save.json");
-        public static string PreviousPath => Path.Combine(Application.persistentDataPath, "alpha-hex-previous-island.json");
-        private const long MaxSaveBytes = 4 * 1024 * 1024;
-
-        public static bool TryArchive(WorldState state, out string message)
+        public static string DirectoryPath => RuntimeOptions.IsQa ? RuntimeOptions.QaDirectory : Application.persistentDataPath;
+        public static string SavePath => Path.Combine(DirectoryPath, "alpha-hex-save.json");
+        public static string PreviousPath => Path.Combine(DirectoryPath, "alpha-hex-previous-island.json");
+        public static string GodotPath
         {
-            try
+            get
             {
-                new Simulation(state);
-                Directory.CreateDirectory(Application.persistentDataPath);
-                string temporary = PreviousPath + ".tmp";
-                File.WriteAllText(temporary, JsonUtility.ToJson(state, true), new UTF8Encoding(false));
-                if (File.Exists(PreviousPath))
-                {
-                    try { File.Replace(temporary, PreviousPath, null); }
-                    catch (PlatformNotSupportedException) { File.Copy(temporary, PreviousPath, true); File.Delete(temporary); }
-                    catch (IOException) { File.Copy(temporary, PreviousPath, true); File.Delete(temporary); }
-                }
-                else File.Move(temporary, PreviousPath);
-                message = "Previous island archived.";
-                return true;
-            }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException ||
-                                               exception is ArgumentException || exception is InvalidOperationException)
-            {
-                message = "Archive failed: " + exception.Message;
-                return false;
+                string root = Application.platform == RuntimePlatform.OSXPlayer || Application.platform == RuntimePlatform.OSXEditor
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support")
+                    : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                return Path.Combine(root, "AlphaHexFrontier", "frontier.json");
             }
         }
+        private const long MaxSaveBytes = 8 * 1024 * 1024;
+        [Serializable] private sealed class SaveHeader { public int SchemaVersion = 0, schema = 0; }
 
-        public static bool TryLoadPrevious(out Simulation simulation, out string message)
+        public static bool TryArchive(WorldState state, out string message) => TrySaveAt(state, PreviousPath, out message);
+        public static bool TrySave(WorldState state, out string message) => TrySaveAt(state, SavePath, out message);
+        public static bool TryLoad(out Simulation simulation, out string message) => TryLoadAt(SavePath, out simulation, out message);
+        public static bool TryLoadPrevious(out Simulation simulation, out string message) => TryLoadAt(PreviousPath, out simulation, out message);
+
+        public static bool TryLoadAt(string path, out Simulation simulation, out string message)
         {
-            bool success = TryRead(PreviousPath, out simulation, out string error);
-            message = success ? "Previous island restored." : "No readable previous island: " + error;
-            return success;
+            if (TryRead(path, out simulation, out string primaryError)) { message = "Settlement loaded."; return true; }
+            if (TryRead(path + ".bak", out simulation, out _)) { message = "Recovered the previous valid save."; return true; }
+            message = "Could not load settlement: " + primaryError; return false;
         }
-
-        public static bool TrySave(WorldState state, out string message)
+        public static bool TrySaveAt(WorldState state, string path, out string message)
         {
-            string temporary = SavePath + ".tmp";
+            string temporary = path + ".pending";
             try
             {
-                // Validate the same plain data that will be written; no engine objects are serialized.
                 new Simulation(state);
                 string json = JsonUtility.ToJson(state, true);
-                Directory.CreateDirectory(Application.persistentDataPath);
-                File.WriteAllText(temporary, json, new UTF8Encoding(false));
-                if (!File.Exists(SavePath))
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+                using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
                 {
-                    File.Move(temporary, SavePath);
+                    byte[] data = new UTF8Encoding(false).GetBytes(json); stream.Write(data, 0, data.Length); stream.Flush(true);
                 }
-                else
+                if (!TryRead(temporary, out _, out string error)) throw new IOException("Temporary save verification failed: " + error);
+                if (File.Exists(path))
                 {
-                    bool primaryIsValid = TryRead(SavePath, out _, out _);
-                    string backup = primaryIsValid ? SavePath + ".bak" : null;
-                    try
-                    {
-                        File.Replace(temporary, SavePath, backup);
-                    }
-                    catch (PlatformNotSupportedException)
-                    {
-                        ReplaceWithBackup(temporary, backup);
-                    }
-                    catch (IOException)
-                    {
-                        // Some target filesystems don't support File.Replace; retain a valid backup.
-                        ReplaceWithBackup(temporary, backup);
-                    }
+                    string backup = TryRead(path, out _, out _) ? path + ".bak" : null;
+                    // Never replace a valid backup with an unreadable primary.
+                    File.Replace(temporary, path, backup);
                 }
-                message = "Settlement saved.";
-                return true;
+                else File.Move(temporary, path);
+                message = "Settlement saved."; return true;
             }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException ||
-                                               exception is ArgumentException || exception is InvalidOperationException)
-            {
-                message = "Save failed: " + exception.Message;
-                return false;
-            }
-            finally
-            {
-                try { if (File.Exists(temporary)) File.Delete(temporary); }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
+            catch (Exception error) when (Expected(error)) { message = "Save failed: " + error.Message; return false; }
+            finally { try { if (File.Exists(temporary)) File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
         }
-
-        private static void ReplaceWithBackup(string temporary, string backup)
+        public static Simulation Decode(string json)
         {
-            if (backup != null) File.Copy(SavePath, backup, true);
-            File.Copy(temporary, SavePath, true);
-            File.Delete(temporary);
-        }
-
-        public static bool TryLoad(out Simulation simulation, out string message)
-        {
-            if (TryRead(SavePath, out simulation, out string primaryError))
+            if (string.IsNullOrWhiteSpace(json)) throw new ArgumentException("The save is empty.");
+            var fields = SaveShape.RootFields(json);
+            var header = new SaveHeader(); JsonUtility.FromJsonOverwrite(json, header);
+            if (header == null) throw new ArgumentException("The save contains no world.");
+            if (header.schema == 3 && header.SchemaVersion == 0)
             {
-                message = "Settlement loaded.";
-                return true;
+                SaveShape.Require(fields, "schema", "seed", "clock", "remainder", "stock", "population", "migration", "meal", "forage", "hungry",
+                    "research", "research_job", "research_progress", "shipments", "expansions", "legacy_research_points", "tiles");
+                var dto = new GodotSaveRecord(); JsonUtility.FromJsonOverwrite(json, dto); return Simulation.ImportGodot(dto);
             }
-            if (TryRead(SavePath + ".bak", out simulation, out _))
-            {
-                message = "Recovered the previous saved settlement.";
-                return true;
-            }
-            message = File.Exists(SavePath) ? "Save could not be loaded: " + primaryError : "No saved settlement yet.";
-            return false;
+            if (header.schema != 0 || header.SchemaVersion != 1 && header.SchemaVersion != 2 && header.SchemaVersion != Simulation.CurrentSchemaVersion)
+                throw new ArgumentException("Unsupported save version.");
+            SaveShape.Require(fields, "SchemaVersion", "Seed", "ElapsedSeconds", "SimulationSteps", "PendingSeconds", "Stock", "Tiles", "Shipments");
+            if (header.SchemaVersion >= 2) SaveShape.Require(fields, "Town");
+            return Simulation.Restore(JsonUtility.FromJson<WorldState>(json));
         }
-
-        private static bool TryRead(string path, out Simulation simulation, out string error)
+        public static bool TryRead(string path, out Simulation simulation, out string error)
         {
             simulation = null;
-            error = "File not found.";
-            if (!File.Exists(path)) return false;
             try
             {
-                var info = new FileInfo(path);
-                if (info.Length == 0 || info.Length > MaxSaveBytes)
-                    throw new ArgumentException("The save size is invalid.");
-                string json = File.ReadAllText(path, Encoding.UTF8);
-                WorldState state = JsonUtility.FromJson<WorldState>(json);
-                if (state == null) throw new ArgumentException("The save contains no world.");
-                simulation = Simulation.Restore(state);
-                error = null;
-                return true;
+                if (!File.Exists(path)) throw new IOException("File not found: " + path);
+                long length = new FileInfo(path).Length;
+                if (length == 0 || length > MaxSaveBytes) throw new ArgumentException("The save size is invalid.");
+                simulation = Decode(File.ReadAllText(path, Encoding.UTF8)); error = null; return true;
             }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException ||
-                                               exception is ArgumentException || exception is InvalidOperationException)
-            {
-                error = exception.Message;
-                return false;
-            }
+            catch (Exception exception) when (Expected(exception)) { error = exception.Message; return false; }
         }
+        private static bool Expected(Exception error) => error is IOException || error is UnauthorizedAccessException
+            || error is ArgumentException || error is InvalidOperationException || error is NotSupportedException;
     }
 }

@@ -1,232 +1,150 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using AlphaHex.Core;
 
 namespace AlphaHex.SimulationChecks
 {
     internal static partial class Program
     {
-        private static readonly HexCoord Home = new HexCoord(0, -1);
-
-        private static Simulation GrowTown()
-        {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Smelter, BuildingKind.Forager, out _), "Build food supply.");
-            foreach (HexCoord coord in new[] { Home, new HexCoord(-1, 1), new HexCoord(1, -1) })
-                Check(sim.TryBuild(coord, BuildingKind.House, out _), "Build housing.");
-            sim.Tick(140);
-            Equal(16, sim.State.Town.Population, "All three homes fill from supported immigration.");
-            return sim;
-        }
-
         private static void TownGrowth()
         {
-            Simulation sim = Simulation.Create();
-            Equal(4, sim.State.Town.Population, "Pioneers.");
-            sim.Tick(20);
-            Equal(4, sim.State.Town.Population, "Immigration without housing.");
-            Check(sim.TryBuild(Home, BuildingKind.House, out _), "House placement.");
-            sim.Tick(19.875f);
-            Equal(4, sim.State.Town.Population, "Early immigration.");
-            sim.Tick(0.125f);
-            Equal(6, sim.State.Town.Population, "First wave.");
-            Equal(2, sim.GetTile(Home).Residents, "House census.");
-            Equal(1, sim.ResearchPoints, "First milestone.");
-            Check(!sim.TryDemolish(Home, out _), "Occupied house was removed.");
-            sim = GrowTown();
-            Equal(3, sim.ResearchPoints, "All three milestones.");
-            Equal(16, sim.HousingCapacity, "Housing count.");
-            new Simulation(Clone(sim.State));
-
-            sim = Simulation.Create();
-            HexCoord remote = new HexCoord(0, 2);
-            Check(sim.TryClaim(remote, out _) && sim.TryBuild(remote, BuildingKind.House, out _), "Remote home.");
-            sim.Tick(25);
-            Equal(4, sim.State.Town.Population, "Disconnected home welcomed citizens.");
-            Check(sim.TryBuildRoad(Smelter, out _), "Home access.");
-            sim.Tick(20);
-            Equal(6, sim.State.Town.Population, "Connected home did not welcome citizens.");
+            var sim = Simulation.Create(); Build(sim, Home, BuildingKind.House); Build(sim, new HexCoord(-1, 1), BuildingKind.Forager, 2);
+            Equal(0, sim.GetTile(Home).Residents, "House filled immediately."); sim.Tick(89.875f); Equal(4, sim.State.Town.Population, "Early migrant.");
+            sim.Tick(.125f); Equal(5, sim.State.Town.Population, "One migrant expected."); Equal(2, sim.AssignedWorkers, "Migrant automatically assigned.");
+            Check(!sim.TryAssignWorkers(new HexCoord(-1, 1), 3, out _), "Crew cap ignored."); Check(!sim.TryDemolish(Home, out _), "Occupied house removed.");
+            sim = Reload(sim); Check(sim.TryAssignWorkers(new HexCoord(-1, 1), 0, out _), "Crew release."); sim.State.Stock.Food = 0; sim.Tick(90);
+            Equal(5, sim.State.Town.Population, "Hungry migrants."); Check(sim.State.Town.LastMealMissed, "Missing shortage.");
+            Check(sim.TryForage(Home, out _), "Manual food."); Check(!sim.TryForage(Home, out _), "Forage cooldown.");
+            Check(sim.TryAssignWorkers(new HexCoord(-1, 1), 2, out _), "Food crew."); sim.Tick(180); Check(sim.State.Town.Population > 5 && !sim.State.Town.LastMealMissed, "Food recovery."); Reload(sim);
         }
-
-        private static void FoodRecovery()
+        private static Simulation TenCitizens()
         {
-            WorldState state = Simulation.Create().State;
-            state.Stock.Food = 0;
-            Simulation sim = new Simulation(state);
-            Check(sim.TryBuild(Home, BuildingKind.House, out _), "Recovery house.");
-            sim.Tick(30);
-            Check(sim.State.Town.LastMealMissed, "Meal shortage missing.");
-            Equal(4, sim.State.Town.Population, "Hungry town grew.");
-            Check(!sim.TryForage(Mine, out _), "Foraged a quarry.");
-            Check(sim.TryForage(Home, out _), "Manual food recovery.");
-            string before = Save(sim.State);
-            Check(!sim.TryForage(Home, out _), "Cooldown bypassed.");
-            Equal(before, Save(sim.State), "Rejected forage altered state.");
-            Check(sim.TryBuild(Smelter, BuildingKind.Forager, out _), "Recovery workplace.");
-            sim.Tick(55);
-            Check(!sim.State.Town.LastMealMissed && sim.State.Town.Population >= 6, "Food failed to restore immigration.");
+            var sim = Ready(); Build(sim, Home, BuildingKind.House); Build(sim, new HexCoord(0, -1), BuildingKind.House); sim.Tick(540);
+            Equal(10, sim.State.Town.Population, "Fixture migration."); return sim;
         }
-
-        private static void Staffing()
+        private static void Research()
         {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _) && sim.TryBuild(Mine, BuildingKind.Mine, out _), "Industry staffing setup.");
-            foreach (HexCoord coord in new[] { Home, Smelter, new HexCoord(-1, 1), new HexCoord(1, -1) })
-                Check(sim.TryBuild(coord, BuildingKind.Forager, out _), "Food staffing setup.");
-            Equal(4, sim.AssignedWorkers, "Overassigned pioneers.");
-            Equal(0, sim.GetWorkersAssigned(Forest), "Industry took food worker.");
-            sim.Tick(5);
-            Equal(0f, sim.GetTile(Forest).WorkProgress, "Unstaffed logging progressed.");
-            Check(sim.TryToggleWork(Home, out _), "Pause food job.");
-            Equal(1, sim.GetWorkersAssigned(Forest), "Freed citizen was not reassigned.");
-            sim.Tick(4);
-            Check(sim.GetInTransit(ResourceKind.Timber) > 0, "Staffed logging failed.");
-            Check(sim.TryToggleWork(Forest, out _), "Pause shipment source.");
-            sim.Tick(0.75f);
-            Equal(0, sim.GetInTransit(ResourceKind.Timber), "Paused workplace held up cargo.");
-            new Simulation(Clone(sim.State));
+            var sim = TenCitizens(); sim.State.Town.Research = ResearchKind.None; sim = Reload(sim);
+            Check(!sim.TryResearch(ResearchKind.PrimitiveSmelting, out _), "Missing brick prerequisite.");
+            int timber = sim.State.Stock.Timber, clay = sim.State.Stock.Clay;
+            Check(sim.TryResearch(ResearchKind.Brickmaking, out _), "Brick research rejected."); Equal(timber - 20, sim.State.Stock.Timber, "Research timber."); Equal(clay - 8, sim.State.Stock.Clay, "Research clay.");
+            Check(!sim.TryResearch(ResearchKind.Farming, out _), "Parallel research."); sim.Tick(70.3125f); var loaded = Reload(sim);
+            sim.Tick(110); loaded.Tick(110); Equal(Save(sim.State), Save(loaded.State), "Research save continuity."); Check(sim.HasResearch(ResearchKind.Brickmaking), "Research incomplete.");
+            Check(!sim.TryResearch(ResearchKind.Brickmaking, out _), "Repeated research."); Check(sim.TryResearch(ResearchKind.PrimitiveSmelting, out _), "Primitive research.");
+            sim.Tick(240); Check(sim.HasResearch(ResearchKind.PrimitiveSmelting), "Primitive incomplete.");
         }
-
-        private static void ResearchUnlocks()
+        private static void Renewal()
         {
-            Simulation sim = Simulation.Create();
-            string before = Save(sim.State);
-            Check(!sim.TryResearch(ResearchKind.Farming, out _), "Unearned research.");
-            Check(!sim.TryBuild(Home, BuildingKind.Farm, out _), "Locked farm built.");
-            Check(!sim.TryResearch(ResearchKind.Farming | ResearchKind.DeepMining, out _), "Combined research accepted.");
-            Equal(before, Save(sim.State), "Rejected research spent resources.");
-            sim = GrowTown();
-            foreach (ResearchKind kind in new[] { ResearchKind.Farming, ResearchKind.Reforestation, ResearchKind.DeepMining })
-                Check(sim.TryResearch(kind, out _), "Earned research rejected.");
-            Equal(0, sim.ResearchPoints, "Research was free.");
-            Check(!sim.TryResearch(ResearchKind.Farming, out _), "Duplicate research accepted.");
-            Check(sim.TryClaim(new HexCoord(0, 2), out _) && sim.TryBuild(new HexCoord(0, 2), BuildingKind.Farm, out _), "Researched farm build.");
-            sim.Tick(20);
-            Equal(6, sim.State.Shipments.Single(s => s.Path[0] == new HexCoord(0, 2)).Amount, "Farm food batch.");
-            new Simulation(Clone(sim.State));
+            var sim = Ready(); Build(sim, Forest, BuildingKind.Forestry); Build(sim, new HexCoord(0, -1), BuildingKind.Forester);
+            while (sim.TryHarvest(Forest, out _)) { } sim.Tick(16); Check(sim.GetTile(Forest).SaplingPlanted, "Sapling not planted.");
+            var loaded = Reload(sim); sim.Tick(90); loaded.Tick(90); Equal(Save(sim.State), Save(loaded.State), "Sapling load continuity."); Check(sim.GetTile(Forest).TreesRemaining > 0, "No renewal.");
+            sim = Ready(); while (sim.TryExcavate(Mine, out _)) { } int deep = sim.GetTile(Mine).DeepOreInitial;
+            Build(sim, Mine, BuildingKind.DeepMine); int ore = sim.State.Stock.Ore; sim.Tick(2000);
+            Equal(deep, sim.State.Stock.Ore - ore + sim.GetInTransit(ResourceKind.Ore), "Deep finite accounting."); Equal(0, sim.GetTile(Mine).DeepOreRemaining, "Deep reserve not exhausted.");
+            Equal(6, sim.GetTile(Mine).ExcavationDepth, "Deep depth."); Reload(sim);
         }
-
-        private static void Replanting()
+        private static void Exploration()
         {
-            Simulation sim = GrowTown();
-            Check(sim.TryResearch(ResearchKind.Reforestation, out _), "Reforestation research.");
-            // Put a nursery beside the claimed frontier forest, then exhaust its logging camp.
-            Check(sim.TryClaim(new HexCoord(-2, 0), out _), "Planting frontier.");
-            while (sim.GetTile(Forest).TreesRemaining > 0) sim.TryHarvest(Forest, out _);
-            Check(sim.TryBuild(Forest, BuildingKind.Forester, out _), "Forester build.");
-            HexCoord managed = new HexCoord(-2, 0);
-            Check(sim.TryBuild(managed, BuildingKind.Forestry, out _), "Managed logging camp.");
-            while (sim.GetTile(managed).TreesRemaining > 0) sim.TryHarvest(managed, out _);
-            Equal(BuildingKind.Forestry, sim.GetTile(managed).Building, "Managed logging cleared.");
-            sim.Tick(8);
-            Check(sim.GetTile(managed).SaplingPlanted, "Forester did not plant.");
-            Simulation loaded = new Simulation(Clone(sim.State));
-            sim.Tick(45);
-            loaded.Tick(45);
-            Equal(Save(sim.State), Save(loaded.State), "Sapling save continuity.");
-            Equal(1, sim.GetTile(managed).TreesRemaining, "Sapling maturity.");
-            int timber = sim.State.Stock.Timber;
-            sim.Tick(6);
-            Equal(timber + 3, sim.State.Stock.Timber, "Regrown timber not delivered.");
-            Check(sim.TryDemolish(Forest, out _), "Remove forester.");
-            sim.Tick(0.125f);
-            Equal(BuildingKind.None, sim.GetTile(managed).Building, "Unmanaged exhausted camp remained.");
-            new Simulation(Clone(sim.State));
+            var sim = Ready(); var coord = new HexCoord(0, 2); Claim(sim, coord); Build(sim, coord, BuildingKind.Watchtower);
+            Equal(37, sim.State.Tiles.Count, "Disconnected tower revealed."); Road(sim, Home); Check(sim.GetTile(new HexCoord(0, 5))?.InitialStone > 0, "Guaranteed stone not revealed.");
+            int known = sim.State.Tiles.Count; Check(sim.TryUpgradeTower(coord, out _), "Upgrade failed."); Check(sim.State.Tiles.Count > known, "No upgraded reveal."); known = sim.State.Tiles.Count;
+            Check(sim.TryDemolish(coord, out _), "Tower removal."); Equal(known, Reload(sim).State.Tiles.Count, "Discovery lost.");
+            Check(sim.State.Tiles.All(t => HexCoord.Distance(t.Coord, new HexCoord()) <= 16), "World limit.");
         }
-
-        private static void DeepExtraction()
+        private static string Fixture(string name) => File.ReadAllText(Path.Combine("Assets", "AlphaHex", "Tests", "Fixtures", name + ".json"));
+        private static void UnityMigration()
         {
-            Simulation sim = GrowTown();
-            Check(sim.TryResearch(ResearchKind.DeepMining, out _), "Deep research.");
-            Check(!sim.TryBuild(Mine, BuildingKind.DeepMine, out _), "Deep mine on an unexhausted surface.");
-            while (sim.GetTile(Mine).OreRemaining > 0) sim.TryExcavate(Mine, out _);
-            Check(sim.TryBuild(Mine, BuildingKind.DeepMine, out _), "Deep mine construction.");
-            int total = sim.State.Stock.Ore + sim.GetTile(Mine).DeepOreRemaining;
-            sim.Tick(2);
-            Check(sim.TryDemolish(Mine, out _), "Partial deep job removal.");
-            Equal(72, sim.GetTile(Mine).DeepOreRemaining, "Partial job spent reserve.");
-            // Rebuilding is paid from a fixture stock; it must never refill a deposit.
-            sim.State.Stock.Timber += 20;
-            sim.State.Stock.Metal += 6;
-            Check(sim.TryBuild(Mine, BuildingKind.DeepMine, out _), "Deep rebuild.");
-            sim.Tick(7);
-            Equal(70, sim.GetTile(Mine).DeepOreRemaining, "Deep batch extraction.");
-            Simulation loaded = new Simulation(Clone(sim.State));
-            sim.Tick(300);
-            loaded.Tick(300);
-            Equal(Save(sim.State), Save(loaded.State), "Deep save continuity.");
-            Equal(total, sim.State.Stock.Ore, "Deep ore conservation.");
-            Equal(6, sim.GetTile(Mine).ExcavationDepth, "Deep quarry stages.");
-            Equal(BuildingKind.None, sim.GetTile(Mine).Building, "Exhausted deep mine remained.");
-            Check(sim.GetTile(Mine).HasRoad && !sim.TryBuild(Mine, BuildingKind.DeepMine, out _), "Deep reserve reset.");
+            foreach (int version in new[] { 1, 2 })
+            {
+                var source = JsonSerializer.Deserialize<WorldState>(Fixture("unity-v" + version), JsonOptions); string before = Save(source);
+                var sim = Simulation.Restore(source); Equal(before, Save(source), "Source save mutated."); Equal(127, sim.State.Tiles.Count, "Known world lost.");
+                Equal(version == 1 ? 4 : 6, sim.State.Town.Population, "Population migration."); Equal(version == 1 ? 24 : 29, sim.State.Stock.Food, "Food migration.");
+                Equal(.75f, sim.State.Shipments.Single().Duration, "Old delivery speed changed."); Equal(9f, sim.GetTile(Smelter).WorkProgress, "Foundry completion fraction.");
+                Check(sim.GetTile(Smelter).LegacyOreJob && sim.GetTile(Smelter).InputTimberReserved == 0, "Old job charged fuel.");
+                Check(sim.HasResearch(ResearchKind.Refining) && sim.State.Tiles.Any(t => t.ClayRemaining > 0), "New chain compatibility.");
+                var loaded = Reload(sim); sim.Tick(25); loaded.Tick(25); Equal(Save(sim.State), Save(loaded.State), "Converted save drift.");
+                Check(!sim.GetTile(Smelter).LegacyOreJob, "Legacy flag survived completed job.");
+            }
         }
-
-        private static void TownContinuity()
+        private static void GodotMigration()
         {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Home, BuildingKind.House, out _) && sim.TryBuild(Smelter, BuildingKind.Forager, out _), "Town continuity setup.");
-            sim.Tick(8.3f);
-            Simulation loaded = new Simulation(Clone(sim.State));
-            sim.Tick(52.5f);
-            for (int i = 0; i < 420; i++) loaded.Tick(0.125f);
-            Equal(Save(sim.State), Save(loaded.State), "Town fixed-step continuity.");
+            foreach (string name in new[] { "godot-v3", "godot-frontier-v3" })
+            {
+                string json = Fixture(name); var dto = JsonSerializer.Deserialize<GodotSaveRecord>(json, JsonOptions);
+                var sim = Simulation.ImportGodot(dto); Equal((int)dto.stock.timber, sim.State.Stock.Timber, "Godot stock.");
+                Equal(dto.tiles.Length, sim.State.Tiles.Count, "Godot discoveries."); Equal(dto.tiles.Sum(t => (int)t.workers), sim.AssignedWorkers, "Godot crews.");
+                Equal(dto.shipments.Length, sim.State.Shipments.Count, "Godot cargo."); Equal(dto.clock, sim.State.SimulationSteps * Simulation.FixedStepSeconds, "Godot clock.");
+                Equal(dto.remainder, sim.State.PendingSeconds, "Godot remainder."); Equal(dto.tiles.Select(t => ((int)t.q, (int)t.r)).ToArray().Length, sim.State.Tiles.Count, "Order size.");
+                for (int i = 0; i < dto.tiles.Length; i++) Equal(new HexCoord((int)dto.tiles[i].q, (int)dto.tiles[i].r), sim.State.Tiles[i].Coord, "Discovery order.");
+                var loaded = Reload(sim); sim.Tick(200); loaded.Tick(200); Equal(Save(sim.State), Save(loaded.State), "Godot import save continuity.");
+                Check(!sim.GetTile(Smelter).LegacyOreJob, "Imported legacy job never cleared.");
+            }
         }
-
-        private static void TownMigration()
+        private static void InvalidMigration()
         {
-            Simulation old = Simulation.Create();
-            Check(old.TryBuild(Mine, BuildingKind.Mine, out _), "Legacy mine.");
-            old.Tick(5.25f);
-            WorldState legacy = Clone(old.State);
-            legacy.SchemaVersion = 1;
-            legacy.Town = null;
-            legacy.Stock.Food = 0;
-            foreach (TileState tile in legacy.Tiles) tile.DeepOreInitial = tile.DeepOreRemaining = 0;
-            string before = Save(legacy);
-            Simulation migrated = Simulation.Restore(legacy);
-            Equal(before, Save(legacy), "Migration mutated input.");
-            Equal(24, migrated.State.Stock.Food, "Legacy provisions.");
-            Equal(4, migrated.State.Town.Population, "Legacy citizens.");
-            Equal(72, migrated.GetTile(Mine).DeepOreRemaining, "Legacy deep ore.");
-            Equal(34, migrated.GetTile(Mine).OreRemaining, "Migration refilled surface ore.");
-            migrated.Tick(0.5f);
-            Equal(2, migrated.State.Stock.Ore, "Legacy cargo lost.");
-            migrated.State.Stock.Food = 3;
-            Equal(3, Simulation.Restore(Clone(migrated.State)).State.Stock.Food, "Repeated load granted provisions.");
-            legacy.Tiles.First(t => t.Coord == Smelter).Building = BuildingKind.Farm;
-            Throws<ArgumentException>(() => Simulation.Restore(legacy), "Legacy new building bypass.");
+            var source = JsonSerializer.Deserialize<WorldState>(Fixture("unity-v2"), JsonOptions); source.Town.Population++;
+            string before = Save(source); Throws<ArgumentException>(() => Simulation.Restore(source), "Invalid legacy census."); Equal(before, Save(source), "Rejected source mutated.");
+            var dto = JsonSerializer.Deserialize<GodotSaveRecord>(Fixture("godot-v3"), JsonOptions); dto.stock.ore = 1.5;
+            Throws<ArgumentException>(() => Simulation.ImportGodot(dto), "Fractional resource truncated.");
+            dto = JsonSerializer.Deserialize<GodotSaveRecord>(Fixture("godot-v3"), JsonOptions); dto.tiles[0].work = double.NaN;
+            Throws<ArgumentException>(() => Simulation.ImportGodot(dto), "Nonfinite legacy job accepted.");
+            dto = JsonSerializer.Deserialize<GodotSaveRecord>(Fixture("godot-v3"), JsonOptions); dto.shipments[0].path[0] = "99,99";
+            Throws<ArgumentException>(() => Simulation.ImportGodot(dto), "Invalid cargo route accepted.");
         }
-
-        private static void InvalidTownSaves()
+        private static void EnsureTimber(Simulation sim, int amount)
         {
-            Reject(s => s.Town = null, "Missing town.");
-            Reject(s => s.Town.Population = 6, "Homeless citizens.");
-            Reject(s => s.Town.Research = ResearchKind.Farming, "Unearned research.");
-            Reject(s => s.Town.MealProgress = float.NaN, "Invalid meal progress.");
-            Reject(s => s.Town.ForageCooldown = 9, "Invalid forage cooldown.");
-            Reject(s => s.Stock.Food = -1, "Negative food.");
-            Reject(s => s.Tiles.First(t => t.Coord == Mine).DeepOreRemaining = 999, "Excess deep reserves.");
-            Reject(s => s.Tiles.First(t => t.Coord == Forest).SaplingPlanted = true, "Unresearched sapling.");
-            Reject(s => s.Tiles.First(t => t.Coord == Home).Residents = 2, "Residents outside a house.");
-            Simulation sim = GrowTown();
-            sim.State.Town.Research = (ResearchKind)8;
-            Throws<ArgumentException>(() => new Simulation(Clone(sim.State)), "Unknown research bits.");
+            int safety = 0;
+            while (sim.State.Stock.Timber < amount)
+            {
+                if (++safety > 3000) throw new Exception("Timber recovery did not converge.");
+                var forest = sim.State.Tiles.FirstOrDefault(t => t.Claimed && t.TreesRemaining > 0);
+                if (forest != null) { Check(sim.TryHarvest(forest.Coord, out string why), why); continue; }
+                var frontier = sim.State.Tiles.FirstOrDefault(t => !t.Claimed && t.TreesRemaining > 0 && t.Coord.Neighbors().Any(c => sim.GetTile(c)?.Claimed == true));
+                if (frontier != null && sim.State.Stock.Timber >= 6) { Claim(sim, frontier.Coord); continue; }
+                sim.Tick(10);
+            }
         }
-
-        private static void TownGuidance()
+        private static void WaitFor(Simulation sim, Func<bool> condition, float limit = 1200)
         {
-            Simulation sim = Simulation.Create();
-            string initial = Save(sim.State);
-            SettlementObjective goal = SettlementGuide.Next(sim);
-            Equal("Feed your citizens", goal.Heading, "First town step.");
-            Equal(initial, Save(sim.State), "Town guidance changed state.");
-            Check(goal.Target.HasValue && sim.TryBuild(goal.Target.Value, BuildingKind.Forager, out _), "Food target is unusable.");
-            goal = SettlementGuide.Next(sim);
-            Equal("Welcome more citizens", goal.Heading, "Housing step.");
-            Check(goal.Target.HasValue && sim.TryBuild(goal.Target.Value, BuildingKind.House, out _), "House target is unusable.");
-            Equal("Your first newcomers", SettlementGuide.Next(sim).Heading, "Immigration waiting step.");
-            sim.Tick(20);
-            Equal("Choose your research", SettlementGuide.Next(sim).Heading, "Research step.");
+            float start = sim.State.ElapsedSeconds;
+            while (!condition()) { Check(sim.State.ElapsedSeconds - start < limit, "Playthrough stalled."); EnsureTimber(sim, 12); sim.Tick(1); }
+        }
+        private static void ResearchNow(Simulation sim, ResearchKind kind)
+        {
+            EnsureTimber(sim, Simulation.ResearchCost(kind).Timber + 12);
+            Check(sim.TryResearch(kind, out string why), why); WaitFor(sim, () => sim.HasResearch(kind));
+        }
+        private static void Playthrough()
+        {
+            foreach (int seed in new[] { 417, 418 }) Playthrough(seed);
+        }
+        private static void Playthrough(int seed)
+        {
+            var sim = Simulation.Create(seed); Build(sim, Home, BuildingKind.House); Build(sim, new HexCoord(-1, 1), BuildingKind.Forager, 2);
+            Build(sim, Forest, BuildingKind.Forestry); Claim(sim, Clay); Road(sim, new HexCoord(0, -1)); Build(sim, Clay, BuildingKind.ClayPit);
+            WaitFor(sim, () => sim.State.Town.Population >= 6); ResearchNow(sim, ResearchKind.Brickmaking);
+            EnsureTimber(sim, 30); Build(sim, Smelter, BuildingKind.Kiln);
+            ResearchNow(sim, ResearchKind.Reforestation); EnsureTimber(sim, 30); Build(sim, new HexCoord(0, -1), BuildingKind.Forester);
+            EnsureTimber(sim, 28); Claim(sim, new HexCoord(0, 2)); Build(sim, new HexCoord(0, 2), BuildingKind.House);
+            WaitFor(sim, () => sim.State.Stock.Brick >= 12 && sim.State.Town.Population >= 8); ResearchNow(sim, ResearchKind.PrimitiveSmelting);
+            WaitFor(sim, () => sim.State.Stock.Brick >= 14); EnsureTimber(sim, 50); Claim(sim, new HexCoord(0, 3));
+            var bloomery = new HexCoord(0, 3); Build(sim, bloomery, BuildingKind.Bloomery); Build(sim, Mine, BuildingKind.Mine);
+            float firstMetal = 0;
+            while (sim.State.Stock.Metal < 6)
+            {
+                EnsureTimber(sim, 30); WaitFor(sim, () => sim.State.Stock.Ore >= 3);
+                Check(sim.TryStartBatch(bloomery, out string why), why); int metal = sim.State.Stock.Metal;
+                // Persist in the middle of a manual batch to exercise the actual continuation path.
+                sim.Tick(30.3125f); sim = Reload(sim); WaitFor(sim, () => sim.State.Stock.Metal > metal);
+                if (firstMetal == 0) firstMetal = sim.State.ElapsedSeconds;
+            }
+            WaitFor(sim, () => sim.State.Town.Population >= 10 && sim.State.Stock.Brick >= 26);
+            ResearchNow(sim, ResearchKind.Refining); EnsureTimber(sim, 42);
+            Check(sim.TryDemolish(bloomery, out string remove), remove); Build(sim, bloomery, BuildingKind.Smelter);
+            int before = sim.State.Stock.Metal; WaitFor(sim, () => sim.State.Stock.Metal > before); Reload(sim);
+            Console.WriteLine($"  Seed {seed}: first metal {firstMetal / 60:0.0} min; working foundry {sim.State.ElapsedSeconds / 60:0.0} min (simulation time, not human playtime).");
         }
     }
 }

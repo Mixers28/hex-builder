@@ -4,7 +4,7 @@
 
 Develop a small frontier village by supporting gradual immigration, choosing where people work, and turning discoveries into productive capabilities. The user wants a visually richer, replayable settlement that grows incrementally across weeks. Their 2026-10-10 playtest found the earlier Unity loop enjoyable and understandable but shallow and effectively exhausted after about fifteen minutes.
 
-The active **Godot 4.7.2** slice implements one complete new frontier cycle. This is groundwork for that longer game, not evidence that weeks of content or replayability already exist. The engine change and build were explicitly requested after planning. Active-play-only progress, seeded generation on discovery, and the recommended stone/tool/watchtower chain were accepted with the build request. See the [decision log](DECISIONS.md) and [slice record](slices/001-first-frontier.md). The [Unity rules](UNITY_DESIGN.md) are a historical baseline.
+The active engine is **Unity 6.3 LTS (6000.3.26f1)** following the user’s 2026-10-11 approval to return to Unity. Slice 002 carries forward the Godot frontier and replaces its circular metal dependency with clay, bricks and primitive smelting. It is groundwork for the longer game, not evidence of weeks of completed content. See the [decision log](DECISIONS.md) and [current slice](slices/002-clay-and-first-metal.md). `UNITY_DESIGN.md` and Slice 001 describe historical versions.
 
 ## Long-term progression vision
 
@@ -25,94 +25,77 @@ For planning, rival villages and barbarians are assumed to be computer-controlle
 
 The [roadmap](ROADMAP.md) proposes an incremental order. Each new slice should demonstrate a complete production or expansion payoff and preserve existing saves. Weeks of engagement will require playtesting these interacting systems; content count and longer research timers alone cannot establish it. The current radius-16 map does not yet model a complete island or travel between islands.
 
-## Current playable slice: First Frontier
+## Next opening: clay and first metal
 
-The rules and balance below describe the delivered Godot build. Future equipment, warfare, animal and maritime systems above do not change these implemented rules yet.
+The user accepted the recommended manual, worker-operated primitive batch and a 45–60-minute human playtest target. Timber is the first fuel; clay and brick are the only new resource counters. Low-quality smelting means slower, less efficient processing, not a second metal quality inventory.
 
-### Playable loop
+New villages begin with four pioneers, seven claims, 80 timber, 24 food and **zero ore, metal, stone, clay and bricks**. A guaranteed clay bed at `(0,-2)` lies within the initial radius-three discovery. Claims cost **6 timber**, roads **2 timber**. Neither requires metal. Manual timber, ore, clay and food recovery remains available on owned suitable land.
 
-1. Begin with four pioneers at the village hall, seven owned plots, 80 timber, 10 metal and 24 food. A radius-three area of 37 hexes is visible.
-2. Build empty cottages and a food producer. Assign its crew. Eligible migrants arrive one at a time and occupy connected housing automatically; each newcomer becomes an available worker.
-3. Allocate workers to timber, iron extraction and metal refining. Crew choices affect work speed. Roads, finite deposits and each producer's delivery wait remain meaningful constraints.
-4. Research surveying, build a connected watchtower and discover more land. Revealed land is unclaimed and its resources cannot be collected until developed.
-5. Discover stone, research Stoneworking and Quarrying tools, claim and connect an outcrop, then staff a quarry. Follow its stone into the shared village stores.
-6. Research masonry and spend delivered stone to reinforce a watchtower. The wider survey opens another frontier. Save and continue the same village; there is no population victory condition or end screen.
+The path is food/housing/wood → clay → researched brick firing → kiln → researched primitive smelting → manually started bloomery → researched efficient refining → automated foundry → surveying and stone. Materials are paid at construction or research start. In-flight goods are not spendable.
 
-Farming, tree nurseries and finite deep mining support further settlement growth. Additional resource tiers, differentiated region objectives and long-term research branches are future slices. Repeating the present tower/quarry cycle is possible, but does not by itself establish durable replayability.
+## Housing, migration and crews
 
-## Housing, migration and workers
-
-Housing is filled automatically; production staffing is manual. Four pioneers remain at the hall, and each cottage holds four newcomers. Building a cottage does not award population. One citizen arrives after **90 seconds of eligible time** with a connected vacancy, no missed-meal flag, and food stock at least equal to population plus one. Arrival consumes two food. Progress pauses when these conditions fail.
-
-Meals occur every 30 seconds and consume one food per two citizens, rounded up. Shortages consume available food and pause immigration; they do not kill or evict anyone or halt recovery production. A later supplied meal clears the shortage. Occupied cottages cannot be demolished. Existing residents of a disconnected home remain citizens and can work, although that home cannot receive further arrivals.
-
-A producer has two or three crew places. Work speed is **100%, 155%, 210%** for one, two or three workers; zero workers means no work. These are initial balance choices, not tested long-term targets. No assignments are made silently when new people arrive. A disconnected workplace can retain its assigned crew but explains why it is idle. Total assignments cannot exceed population. Pausing releases the crew; resuming still requires assignment.
-
-Changing crew preserves legitimate partial work and reserved foundry input. Dispatched cargo continues moving independently. Each producer waits for its own cart before restarting, so extra workers cannot eliminate the cost of long roads. No individual identities, families, skill levels or equipment inventories are simulated.
+- Four pioneers live at the hall. Each cottage adds four places and starts empty.
+- With connected vacancies, a sufficient food reserve and no missed last meal, one newcomer arrives every 90 simulated seconds and consumes two food. Housing fills automatically; jobs do not.
+- Every 30 seconds the village eats `ceil(population / 2)` food. A shortage pauses supported immigration; hand foraging gives two food with an eight-second cooldown.
+- Explicit crews have a speed multiplier of 1.0 / 1.55 / 2.10 for one / two / three workers. Total assignments cannot exceed citizens. Pausing releases the crew and retains valid work and inputs.
+- A producer shares one cart across its crew and waits for delivery before starting another job. Longer roads still reduce throughput.
 
 ## Construction and production balance
 
-Durations exclude outbound travel. Costs are paid once at successful construction. Each hex holds one primary building.
+Timings below are base job durations with one worker, before delivery. Cottage and tower functions do not require crews.
 
-| Building | Cost | Crew | Output / base work time | Requirement |
-| --- | --- | --- | --- | --- |
-| Cottage | 10 timber | — | Four housing places | Clear land |
-| Forager lodge | 8 timber | 2 | 3 food / 12 s | Grass or woodland |
-| Woodcutter | 12 timber | 3 | One tree → 3 timber / 12 s | Standing trees |
-| Iron mine | 16 timber, 2 metal | 3 | Up to 2 ore / 15 s | Surface iron |
-| Foundry | 20 timber, 4 metal | 3 | 2 reserved ore → 1 metal / 18 s | Clear land |
-| Farmstead | 18 timber, 3 metal | 3 | 6 food / 24 s | Farming; clear grass without ore history |
-| Tree nursery | 18 timber, 4 metal | 2 | Plant one neighbouring sapling / 16 s | Woodland stewardship; clear grass |
-| Deep mine | 26 timber, 8 metal | 3 | Up to 2 deep ore / 18 s | Deep mining; exhausted surface iron |
-| Watchtower | 24 timber, 4 metal | — | Reveal radius 4 when connected | Frontier surveying; clear land |
-| Stone quarry | 22 timber, 6 metal | 3 | Up to 2 stone / 20 s | Quarrying tools; stone deposit |
+| Building | Construction | Crew cap | Output / function |
+| --- | --- | --- | --- |
+| Cottage | 10 timber | 0 | Four housing places |
+| Forager lodge | 8 timber | 2 | 3 food / 12 s |
+| Woodcutter | 12 timber | 3 | 1 tree → 3 timber / 12 s |
+| Clay pit | 12 timber | 3 | Up to 3 finite clay / 24 s |
+| Brick kiln | 16 timber, 6 clay | 3 | 4 clay + 2 timber → 2 bricks / 45 s |
+| Primitive bloomery | 16 timber, 8 bricks | 1 | Manual batch: 3 ore + 3 timber → 1 metal / 90 s |
+| Iron mine | 16 timber, 6 bricks | 3 | Up to 2 finite ore / 15 s |
+| Foundry | 24 timber, 4 metal, 16 bricks | 3 | 2 ore + 1 timber → 1 metal / 18 s, automatic |
+| Farm | 18 timber, 6 bricks | 3 | 6 food / 24 s |
+| Tree nursery | 18 timber, 4 clay | 2 | Plant an adjacent sapling / 16 s; mature after 90 s |
+| Watchtower | 24 timber, 4 metal | 0 | Connected radius-four survey |
+| Stone quarry | 22 timber, 6 metal | 3 | Up to 2 finite stone / 20 s |
+| Deep mine | 26 timber, 8 metal | 3 | Up to 2 finite deep ore / 18 s |
 
-Claims cost **6 timber and 1 metal**, need adjacent owned land and must already be revealed. Roads cost **2 timber**. Buildings also connect roads. Keep the cost of another resource claim in reserve before exhausting existing supplies; food recovery does not replace missing timber or metal.
+Each bloomery batch requires a separate **Start batch** action and one assigned worker. It reserves all inputs immediately; it cannot queue or repeat itself. A foundry is faster and uses less ore and timber per metal. Clay pits, kilns, mines and foundries repeat their jobs while staffed, connected and supplied.
 
-Manual gathering on owned plots supplies three timber per tree or one surface ore per excavation, even without a road. Hand foraging supplies two food from owned grass/woodland with a global eight-second cooldown. Stone and deep iron require their researched extractors. Manual gathering cannot refund construction or create a depleted deposit.
+Nurseries plant only suitable adjacent owned grass or woodland, avoiding buildings and mineral history. Woodland capacity is 18 trees, matching the upper range of generated starting forest. Managed logging stays for regrowth. Reserve planned construction sites before allowing them to be replanted.
 
 ## Research
 
-Research uses both materials and saved work time, with one active project. Materials are committed once when it begins. In First Frontier, projects are permanent capabilities and tools are an unlock; crafted equipment and durability are not implemented. The long-term equipment direction above extends this model in future slices. Discovery precedes stone research, and quarry tools require no stone, avoiding a circular prerequisite.
+One project runs at a time. Materials are paid once; progress survives saves. Population gates are checked at start. The original three technologies may use retained legacy milestone credits in imported settlements.
 
-| Project | Citizens | Cost | Time | Prerequisite and result |
+| Research | Citizens | Materials | Time | Prerequisite / payoff |
 | --- | --- | --- | --- | --- |
-| Farming | 6 | 16 timber, 2 metal | 90 s | Unlock farmsteads |
+| Brick firing | 6 | 20 timber, 8 clay | 180 s | Unlock kilns |
+| Primitive smelting | 8 | 24 timber, 12 bricks | 240 s | Brick firing; unlock bloomeries and iron mines |
+| Efficient refining | 10 | 24 timber, 2 metal, 10 bricks | 300 s | Primitive smelting; unlock foundries |
+| Cultivation | 6 | 16 timber, 6 bricks | 90 s | Unlock farms |
+| Woodland stewardship | 6 | 18 timber, 4 clay | 120 s | Unlock nurseries before refined metal |
 | Frontier surveying | 6 | 16 timber, 3 metal | 90 s | Unlock watchtowers |
-| Woodland stewardship | 8 | 18 timber, 4 metal | 120 s | Unlock tree nurseries |
-| Stoneworking | 6 | 12 timber, 4 metal | 90 s | Surveying and discovered stone; opens tool research |
-| Quarrying tools | 8 | 24 timber, 8 metal | 150 s | Stoneworking; unlock quarries |
+| Stoneworking | 6 | 12 timber, 4 metal | 90 s | Surveying and discovered stone |
+| Quarrying tools | 8 | 24 timber, 8 metal | 150 s | Stoneworking; unlock stone quarries |
 | Frontier masonry | 10 | 20 timber, 6 metal, 10 stone | 180 s | Quarrying tools; unlock tower reinforcement |
-| Deep mining | 10 | 30 timber, 8 metal | 180 s | Unlock finite deeper iron extraction |
+| Deep mining | 10 | 30 timber, 8 metal | 180 s | Unlock deep mines on exhausted surface deposits |
 
-Reinforcing a connected watchtower costs **12 timber, 4 metal and 16 stone** and increases its reveal radius from four to six. It can be done once per tower. Other new towers can reveal further regions. Existing unused Unity research points remain spendable once for the original Farming, Woodland stewardship or Deep mining unlocks; they do not buy frontier research.
+Reinforcing a wooden watchtower costs 12 timber, 4 metal and 16 stone. A connected reinforced tower reveals radius six. Discovery does not grant ownership or resources and remains visible after tower removal.
 
-## Frontier and visuals
+## Finite resources, frontier and persistence
 
-The world generates reproducibly from seed and coordinates as towers reveal land. The supported radius is **16**, up to **817 hex coordinates**, including water. This is a bounded first implementation, not an endless world. Initial known/owned areas are separate. Fog conceals unexplored terrain and deposits; camera bounds follow discoveries rather than disclosing the whole map.
+Only 37 hexes initially exist in the simulation. Further discovery generates seeded terrain within radius 16 (817 possible coordinates). Hex radius is 2.35; mist hides unknown land without exposing its resources or maximum boundary. The current map is not a completed island/seafaring system.
 
-Discovery is permanent through save/load, tower removal and rebuilding. It never awards resources or ownership, regenerates a depleted deposit, or hides previously visible legacy land. Starting forests, iron and the first stone opportunities are guaranteed; other terrain quantities and locations vary with seed. Those differences are implemented, while strategically different openings still require human testing.
+Trees, surface ore, deep ore, stone and clay are finite. A tree yields three timber; hand mining/gathering yields one ore/clay. Surface and deep extraction have three visual stages each; stone has three. A deep ore reserve begins at twice its surface deposit. Saplings provide renewable wood when researched and supported; manual gathering never refills a depleted deposit.
 
-Plots are larger relative to structures: hex radius 2.35, cottage body roughly 1.2 units wide, with yards, gardens, timber framing, fences, logs, crop rows, quarry hoists and tower foundations. Original code-generated geometry supplies all active game art. A cream/green HUD and distinct resource/building silhouettes retain the rustic direction. There are no imported textures, external models or audio files in the Godot project.
+Carts take 1.25 seconds per road edge; imported older 0.75-second trips finish unchanged. Stores, reserved recipe inputs and cargo are accounted separately. Demolition refunds unused reserved inputs once, not construction costs, and refuses the hall, occupied homes and active delivery routes. Exhausted extractors clear after final delivery while retaining their road.
 
-Visible citizens derive from the census and crew assignments. Their home/work movement is decorative. Carts represent real saved shipments and use their actual route and time; animation cannot create inventory. Surface ore, deep ore and stone excavation each have three height stages. This remains a raised-column world with no arbitrary tunnels or underground navigation.
+Unity schema 4 imports Unity schemas 1/2 and Godot schema 3 without rewriting the source. Existing industry is grandfathered through the new gates. A previously reserved ore-only foundry job finishes on its original inputs before adopting the new recipe. See [architecture](ARCHITECTURE.md) for validation, backup, import and quit behavior.
 
-## Finite resources and transport
+## Pacing and boundaries
 
-Output travels at **1.25 seconds per edge** to the shared hall. A producer waits for its own delivery. A foundry takes input from shared stock and reserves it before working; there is no separate inbound ore cart. Stored, reserved and travelling goods are distinct and survive loading. Imported cargo completes its original journey at the saved duration.
+The current command-only benchmark reaches first metal in 18.2 simulated minutes and a working foundry in 31.4. It uses hand gathering and informed choices and is not a human playtime estimate. Test the 45–60-minute target with friends, recording idle waiting, unclear recipes and useful labour decisions. Do not achieve the weeks-long ambition merely by stretching timers.
 
-Trees and mineral deposits are consumed at dispatch, with a final partial ore/stone batch if needed. Deep iron starts at twice the original surface deposit and never refills. Exhausted extractors clear after their last delivery, leave an access road and release their workers. Logging beside a nursery stays for regrowth.
-
-A nursery chooses adjacent owned grass/woodland with no mineral history, fewer than twelve trees, no current sapling and no building except a woodcutter. It prefers fewer trees and then an existing logging site. One sapling matures after **90 seconds**, even if the nursery is removed. Construction over a growing sapling is restricted. Removal refunds no construction costs, returns unused foundry ore once, and rejects the hall, occupied housing and active cargo routes.
-
-## Interface, persistence and limits
-
-The resource strip distinguishes stored and travelling goods. Population shows capacity, working and available people. Build [B], Workers [T], Research [R] and the contextual inspector expose the next action, crew controls, migration status, prerequisites, work/delivery progress and waiting reasons. Guidance stays a single quiet line, prioritizing food or expansion-reserve shortages. Destructive removal requires a second click for the same structure.
-
-The interface scales from a 1440×900 reference layout as the window grows, including Retina fullscreen. Different aspect ratios expose additional layout space without stretching text. The 3D world renders at the actual window resolution. The fullscreen fix changes presentation only; production, research, migration and saves retain their existing rules.
-
-The settlement menu [M] includes **Save & Exit**. It saves the current village before closing; a failed save displays the error and leaves the game open for retry. Normal window closure uses the same checked save when autosaving is enabled. Startup still preserves an unreadable save by disabling automatic writes until an explicit save or replacement.
-
-Desktop mouse/keyboard is the acceptance target. Controls and the start-to-finish path are in [README](../README.md). A [Windows x86_64 playtest package](WINDOWS_BUILD.md) is available; its exported resource pack was checked with the Mac engine, while native Windows execution remains unverified. Touch handlers are present, but physical-device usability, safe areas and mobile exports remain unverified. Godot native schema-3 saves, fallback recovery, a previous-settlement archive and explicit Unity schema-1/2 import preserve continuity. Time advances only during active play; there is no offline production or background service.
-
-The current content is one new stone/tool/masonry chain plus the supporting town systems. No combat, multiplayer, extra settlement needs, seasons, arbitrary tunnels, multiple depots, tool crafting/durability or additional resource tiers are included. The first playtest should establish whether reallocating workers and choosing another frontier feels worthwhile, and where the economy becomes repetitive; longer timers alone do not meet the weeks-long goal.
+There is no victory screen, offline progress, manufactured tool inventory, charcoal/coal, metal grades, weapons, combat, animals, boats, competing-village AI, multiplayer or arbitrary tunnelling in this slice. Those destinations remain in the roadmap and require their own agreed playable milestones.

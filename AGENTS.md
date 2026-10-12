@@ -1,17 +1,12 @@
 # Alpha Hex Builder
 
-## Active Godot frontier
+## Active Unity frontier
 
-The user changed the active engine to Godot on 2026-10-10. Open `godot/project.godot` with Godot 4.7.2 (standard edition). The Unity project below is a preserved legacy baseline.
+The user approved returning active development to Unity on 2026-10-11. Open the repository root with the pinned Unity editor. `godot/` preserves the released Godot demo and its tests; it is a compatibility reference, not the active implementation.
 
-- Read `README.md`, `docs/DESIGN.md`, `docs/ARCHITECTURE.md` and `docs/slices/001-first-frontier.md` before changing behavior.
-- Active game rules live in `godot/core`; presentation and input in `godot/runtime` call validated simulation commands. Headless checks exercise the actual GDScript simulation, not a second implementation.
-- Godot persistence uses validated versioned JSON records with an explicit importer for Unity schema 1/2. This is an intentional engine/persistence migration. Never alter an imported source save or silently reset a corrupt save.
-- Run Godot headless import/parse, `godot --headless --path godot --script res://tests/simulation_checks.gd`, and rendered smoke checks for active runtime changes. Use the installed executable if it is not on PATH. Record the distinction between simulation, rendered and physical-device checks.
-- Preserve finite resources, crew limits, reservations, in-flight goods, gradual migration, discovery and save continuity. A producer waits for its own delivery. Manual food, timber and surface-ore recovery remains available.
-- Keep rule constants, HUD descriptions and design documentation consistent. Do not commit `.godot`, QA output, private saves or machine-specific editor paths.
-
-The remaining instructions apply to changes inside the legacy Unity project and its C# verifier.
+- Read `docs/DESIGN.md` and `docs/slices/002-clay-and-first-metal.md` before changing progression.
+- Preserve manual crews, gradual migration, permanent discovery, finite deposits, reserved inputs and in-flight goods. Import Godot schema 3 and Unity schemas 1/2 without writing to the source file.
+- The current slice adds clay, bricks and manual primitive smelting before efficient foundries. Armies, boats, animals, multiplayer and weeks of content remain future scope.
 
 Build a Unity game about gathering, mining, refining and territorial expansion. The current terrain is layered hex columns with staged quarry excavation. It does not support arbitrary tunnels. No PvP or multiplayer is implemented. Preserve these boundaries unless the user changes the scope.
 

@@ -10,12 +10,14 @@ namespace AlphaHex.Runtime
     /// <summary>Small, shared procedural art kit. No downloaded models or textures are required.</summary>
     internal sealed partial class WorldArt : IDisposable
     {
+        public readonly Material Fog, Clay, Brick, Embers;
+        public readonly Mesh FogHex;
         public readonly Material Cliff, PitFloor, Water, WaterGlint, Selection, Road, Concrete;
         public readonly Material Timber, Bark, Steel, DarkSteel, PaintedBlue, Ochre, Cream, Glass;
         public readonly Material[] Leaves;
         public readonly Mesh Cone, Rock, SelectionRing;
 
-        private readonly Material[,] _surfaces = new Material[6, 2];
+        private readonly Material[,] _surfaces = new Material[8, 2];
         private readonly List<Material> _materials = new List<Material>();
         private readonly List<Mesh> _meshes = new List<Mesh>();
 
@@ -24,7 +26,7 @@ namespace AlphaHex.Runtime
             Color[] colors =
             {
                 Hex("78966A"), Hex("587C59"), Hex("9B9788"),
-                Hex("777D79"), Hex("CCBD96"), Hex("315F73")
+                Hex("777D79"), Hex("CCBD96"), Hex("315F73"), Hex("A8AAA0"), Hex("B78260")
             };
             for (int terrain = 0; terrain < colors.Length; terrain++)
             {
@@ -33,6 +35,11 @@ namespace AlphaHex.Runtime
                     Color.Lerp(colors[terrain], Hex("566A68"), 0.38f));
             }
 
+            Fog = Material("Uncharted mist", Hex("C7D5CE"));
+            Clay = Material("Wet clay", Hex("B47D59"));
+            Brick = Material("Fired brick", Hex("A34D38"));
+            Embers = Material("Hot coals", Hex("F8A142"), emission: .65f);
+            FogHex = Register(BuildTerrain(.35f, 0, false));
             Cliff = Material("Layered warm stone", Hex("79796F"));
             PitFloor = Material("Quarry floor", Hex("454E50"));
             Water = Material("Coastal water", Hex("315F73"), 0.35f);
@@ -62,7 +69,7 @@ namespace AlphaHex.Runtime
 
         public Material Surface(TerrainKind terrain, bool claimed)
         {
-            return _surfaces[Mathf.Clamp((int)terrain, 0, 5), claimed ? 1 : 0];
+            return _surfaces[Mathf.Clamp((int)terrain, 0, 7), claimed ? 1 : 0];
         }
 
         public Material CargoMaterial(ResourceKind resource)
@@ -72,6 +79,9 @@ namespace AlphaHex.Runtime
                 case ResourceKind.Timber: return Timber;
                 case ResourceKind.Ore: return Ochre;
                 case ResourceKind.Food: return Leaves[2];
+                case ResourceKind.Stone: return Cliff;
+                case ResourceKind.Clay: return Clay;
+                case ResourceKind.Brick: return Brick;
                 default: return Steel;
             }
         }
@@ -198,7 +208,7 @@ namespace AlphaHex.Runtime
                     mesh.Triangle(new Vector3(0, surface, 0), Corner(i, outer, surface),
                         Corner((i + 1) % 6, outer, surface), Vector3.up, 0);
             }
-            return mesh.Finish("Hex terrain");
+            return ScaleHex(mesh.Finish("Hex terrain"));
         }
 
         private static void AddBand(MeshBuilder mesh, float outerRadius, float outerHeight,
@@ -214,9 +224,15 @@ namespace AlphaHex.Runtime
         {
             var mesh = new MeshBuilder(1);
             AddBand(mesh, outerRadius, 0, innerRadius, 0, 0);
-            return mesh.Finish("Hex outline");
+            return ScaleHex(mesh.Finish("Hex outline"));
         }
 
+        private static Mesh ScaleHex(Mesh mesh)
+        {
+            var vertices = mesh.vertices;
+            for (int i = 0; i < vertices.Length; i++) { vertices[i].x *= HexWorldView.HexRadius; vertices[i].z *= HexWorldView.HexRadius; }
+            mesh.vertices = vertices; mesh.RecalculateBounds(); mesh.RecalculateNormals(); return mesh;
+        }
         private static Mesh BuildCone()
         {
             var mesh = new MeshBuilder(1);
@@ -272,7 +288,7 @@ namespace AlphaHex.Runtime
             rock.transform.localRotation = Quaternion.Euler(0, variant * 61, 0);
         }
 
-        public void Building(Transform parent, BuildingKind kind)
+        public void Building(Transform parent, BuildingKind kind, int towerLevel = 1)
         {
             switch (kind)
             {
@@ -285,6 +301,11 @@ namespace AlphaHex.Runtime
                 case BuildingKind.Farm: Farm(parent); break;
                 case BuildingKind.Forester: Forester(parent); break;
                 case BuildingKind.DeepMine: DeepMine(parent); break;
+                case BuildingKind.Watchtower: Watchtower(parent, towerLevel); break;
+                case BuildingKind.Quarry: Quarry(parent); break;
+                case BuildingKind.ClayPit: ClayPit(parent); break;
+                case BuildingKind.Kiln: Kiln(parent); break;
+                case BuildingKind.Bloomery: Bloomery(parent); break;
             }
         }
 

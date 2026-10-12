@@ -39,6 +39,8 @@ namespace AlphaHex.Runtime
         private float MinimumDistance { get { return 4f; } }
         private float MaximumDistance { get { return Mathf.Max(18f, _radius * 4f); } }
 
+        public void SetBounds(float radius) { _radius = Mathf.Max(2, radius); _camera.farClipPlane = Mathf.Max(180, radius * 12); }
+
         public void Focus(Vector3 position)
         {
             _target = position;

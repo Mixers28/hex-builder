@@ -3,15 +3,17 @@ using System.Collections.Generic;
 
 namespace AlphaHex.Core
 {
-    public enum TerrainKind { Grass, Forest, Rock, Ore, Sand, Water }
-    public enum BuildingKind { None, Depot, Forestry, Mine, Smelter, House, Forager, Farm, Forester, DeepMine }
-    public enum ResourceKind { Timber, Ore, Metal, Food }
+    public enum TerrainKind { Grass, Forest, Rock, Ore, Sand, Water, Stone, Clay }
+    public enum BuildingKind { None, Depot, Forestry, Mine, Smelter, House, Forager, Farm, Forester, DeepMine, Watchtower, Quarry, ClayPit, Kiln, Bloomery }
+    public enum ResourceKind { Timber, Ore, Metal, Food, Stone, Clay, Brick }
     [Flags]
-    public enum ResearchKind { None = 0, Farming = 1, Reforestation = 2, DeepMining = 4 }
+    public enum ResearchKind { None = 0, Farming = 1, Reforestation = 2, DeepMining = 4, Surveying = 8,
+        Stoneworking = 16, QuarryTools = 32, Masonry = 64, Brickmaking = 128, PrimitiveSmelting = 256, Refining = 512 }
 
     [Serializable]
     public sealed class TownState
     {
+        internal TownState Copy() => (TownState)MemberwiseClone();
         public int Population = Simulation.PioneerCitizens;
         public int EarnedMilestones;
         public ResearchKind Research;
@@ -19,6 +21,9 @@ namespace AlphaHex.Core
         public float MealProgress;
         public float ForageCooldown;
         public bool LastMealMissed;
+        public ResearchKind ResearchJob;
+        public float ResearchProgress;
+        public int LegacyResearchPoints;
     }
 
     [Serializable]
@@ -28,21 +33,28 @@ namespace AlphaHex.Core
         public int Ore;
         public int Metal;
         public int Food;
+        public int Stone;
+        public int Clay;
+        public int Brick;
 
         public ResourceStock() { }
 
-        public ResourceStock(int timber, int ore, int metal, int food = 0)
+        public ResourceStock(int timber, int ore, int metal, int food = 0, int stone = 0, int clay = 0, int brick = 0)
         {
             Timber = timber;
             Ore = ore;
             Metal = metal;
             Food = food;
+            Stone = stone;
+            Clay = clay;
+            Brick = brick;
         }
     }
 
     [Serializable]
     public sealed class TileState
     {
+        internal TileState Copy() => (TileState)MemberwiseClone();
         public HexCoord Coord;
         public TerrainKind Terrain;
         public int Elevation;
@@ -60,10 +72,21 @@ namespace AlphaHex.Core
         public int DeepOreRemaining;
         public bool SaplingPlanted;
         public float SaplingAge;
+        public int Workers;
+        public int InitialStone;
+        public int StoneRemaining;
+        public int InitialClay;
+        public int ClayRemaining;
+        public int TowerLevel;
+        public int SurveyedLevel;
+        public bool BatchRequested;
+        public bool LegacyOreJob;
 
         // An active smelting job owns these inputs until it completes or is demolished.
         // This prevents two smelters from spending the same depot ore.
         public int InputOreReserved;
+        public int InputTimberReserved;
+        public int InputClayReserved;
     }
 
     [Serializable]
@@ -86,6 +109,7 @@ namespace AlphaHex.Core
     {
         public int SchemaVersion = Simulation.CurrentSchemaVersion;
         public int Seed;
+        public int ExpansionClaims;
         public float ElapsedSeconds;
         public ResourceStock Stock = new ResourceStock();
         public List<TileState> Tiles = new List<TileState>();

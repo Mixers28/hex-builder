@@ -8,6 +8,8 @@ namespace AlphaHex.Runtime
     /// <summary>Scene adapter for simulation state. The simulation is the only source of production.</summary>
     public sealed class HexWorldView : MonoBehaviour
     {
+        public const float HexRadius = 2.35f;
+        private int environmentTiles = -1;
         public float Radius { get; private set; } = 8f;
 
         private Simulation _simulation;
@@ -32,9 +34,8 @@ namespace AlphaHex.Runtime
             _tilesRoot = Group("Terrain");
             _shipmentsRoot = Group("Shipments");
             _citizensRoot = Group("Citizens");
-            _environment = Group("Coastal backdrop");
+            _environment = Group("Uncharted frontier");
             Refresh();
-            BuildEnvironment();
         }
 
         private Transform Group(string groupName)
@@ -46,7 +47,7 @@ namespace AlphaHex.Runtime
 
         public static Vector3 GridPosition(HexCoord coord)
         {
-            return new Vector3(1.732050808f * (coord.Q + coord.R * 0.5f), 0, 1.5f * coord.R);
+            return new Vector3(1.732050808f * (coord.Q + coord.R * 0.5f), 0, 1.5f * coord.R) * HexRadius;
         }
 
         public Vector3 WorldPosition(HexCoord coord)
@@ -78,7 +79,7 @@ namespace AlphaHex.Runtime
                 view.Refresh(state, _simulation);
                 view.SetSelected(_selected.HasValue && state.Coord.Equals(_selected.Value));
                 if (state.Terrain != TerrainKind.Water)
-                    extent = Mathf.Max(extent, GridPosition(state.Coord).magnitude + 1.2f);
+                    extent = Mathf.Max(extent, GridPosition(state.Coord).magnitude + HexRadius);
             }
             _removed.Clear();
             foreach (var pair in _tiles)
@@ -90,6 +91,7 @@ namespace AlphaHex.Runtime
                 _tiles.Remove(coord);
             }
             Radius = extent;
+            if (environmentTiles != _tiles.Count) BuildEnvironment();
             AnimateShipments();
             RefreshCitizens();
         }
@@ -216,25 +218,27 @@ namespace AlphaHex.Runtime
 
         private void BuildEnvironment()
         {
-            float width = Mathf.Max(65f, Radius * 9f);
-            GameObject ocean = WorldArt.Primitive("Ocean", PrimitiveType.Plane, _environment,
-                new Vector3(0, 0.04f, 0), new Vector3(width / 10f, 1, width / 10f), _art.Water);
-            var renderer = ocean.GetComponent<Renderer>();
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-            // Static glints are environmental decoration; all moving vehicles represent real shipments.
-            var random = new System.Random(91374);
-            for (int i = 0; i < 72; i++)
-            {
-                float angle = (float)random.NextDouble() * Mathf.PI * 2;
-                float radius = Radius * (1.03f + (float)random.NextDouble() * 1.7f);
-                Vector3 position = new Vector3(Mathf.Cos(angle) * radius, 0.047f, Mathf.Sin(angle) * radius);
-                GameObject glint = WorldArt.Box("Small water glint", _environment, position,
-                    new Vector3(0.12f + (float)random.NextDouble() * 0.68f, 0.003f, 0.025f), _art.WaterGlint,
-                    Quaternion.Euler(0, -18, 0));
-                glint.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
-                glint.GetComponent<Renderer>().receiveShadows = false;
-            }
+            if (_environment == null) return;
+            foreach (Transform child in _environment) { child.gameObject.SetActive(false); WorldArt.Release(child.gameObject); }
+            environmentTiles = _tiles.Count;
+            var ground = WorldArt.Primitive("Uncharted horizon", PrimitiveType.Plane, _environment,
+                new Vector3(0, -.28f, 0), new Vector3(200, 1, 200), _art.Fog);
+            ground.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            var border = new HashSet<HexCoord>(); var outer = new HashSet<HexCoord>();
+            foreach (var known in _tiles.Keys) foreach (var next in known.Neighbors()) if (!_tiles.ContainsKey(next)) border.Add(next);
+            foreach (var edge in border) foreach (var next in edge.Neighbors()) if (!_tiles.ContainsKey(next) && !border.Contains(next)) outer.Add(next);
+            foreach (var coord in border) FogTile(coord, false);
+            foreach (var coord in outer) FogTile(coord, true);
+        }
+        private void FogTile(HexCoord coord, bool outer)
+        {
+            var fog = WorldArt.MeshObject("Uncharted land", _environment, _art.FogHex, _art.Fog, _art.Fog, _art.Fog);
+            fog.transform.localPosition = GridPosition(coord);
+            fog.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            // No collider or tile state: unknown terrain cannot be selected, claimed or inspected.
+            var cloud = WorldArt.Primitive("Frontier mist", PrimitiveType.Sphere, fog.transform,
+                new Vector3(.15f, outer ? .2f : .42f, .1f), new Vector3(4.5f, outer ? .55f : 1.05f, 3.9f), _art.Fog);
+            cloud.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
         }
 
         private void Clear()
@@ -245,6 +249,7 @@ namespace AlphaHex.Runtime
                 group.gameObject.SetActive(false);
                 WorldArt.Release(group.gameObject);
             }
+            environmentTiles = -1;
             _tiles.Clear();
             _carriers.Clear();
             _cargoRenderers.Clear();

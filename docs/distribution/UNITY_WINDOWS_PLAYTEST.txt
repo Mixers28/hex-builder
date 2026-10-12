@@ -1,0 +1,44 @@
+ALPHA HEX BUILDER — CLAY AND FIRST METAL — UNITY PLAYTEST 0.2.0
+
+INSTALL
+Run the AlphaHex Setup executable. No Unity Editor or .NET installation is needed.
+Windows may report an unknown publisher: this independent playtest is unsigned.
+The installer may fetch Microsoft's Visual C++ runtime on first installation.
+Launch Alpha Hex Builder from the installed shortcut. Portable builds also work,
+but install Setup once to use the supported in-game update path.
+
+PLAY
+Middle-drag to pan, right-drag to orbit, scroll to zoom. Select a hex to inspect it.
+B: construction, T: workers, R: research, M: menu, Space: pause, F11: fullscreen.
+Claim adjacent land, connect workplaces to the hall and assign workers manually.
+Housing fills gradually as food-supported migrants arrive. Keep food and timber
+production running before expanding. Hand gathering is a recovery option.
+
+Use nearby clay to research Brickmaking, fire bricks in a kiln and research
+Primitive smelting. Build a bloomery, assign one worker and request each batch.
+Its first metal unlocks the path to a more efficient foundry. Then research
+surveying, build towers and discover resources beyond the mist. Save often.
+
+SAVES
+Menu -> Save & Exit writes the settlement before closing. A failed save keeps
+the game open. Autosave, Load and Previous settlement are also in the menu.
+Unity saves: %USERPROFILE%\AppData\LocalLow\Project Alpha\Alpha Hex Builder\
+Old Godot saves: %APPDATA%\AlphaHexFrontier\frontier.json
+In Menu, paste an old save path and use Import; confirm the archive step. The
+source file is left unchanged, and the current Unity town is archived first.
+
+UPDATES
+Menu -> Check for updates -> Download -> Save, update & restart.
+The update is downloaded and checked while you play. The separate launcher
+replaces files only after saving and closing the game. Saves live outside the
+installation. Future published playtests appear here; a Git push alone is not a
+new playable release. The old Godot ZIP requires this one-time Unity install.
+
+FEEDBACK
+Try reaching a working foundry from a fresh zero-metal village. Tell us where
+you waited, repeated hand gathering, ran short of resources or lost the next goal.
+Include time played, Windows version/GPU and a screenshot for UI problems.
+This remains a small playtest. Armies, boats, animals and weeks-long progression
+are planned directions; they are not implemented here.
+
+Project and releases: https://github.com/Mixers28/hex-builder

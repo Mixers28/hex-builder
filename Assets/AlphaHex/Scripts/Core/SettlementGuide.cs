@@ -26,88 +26,54 @@ namespace AlphaHex.Core
         public static SettlementObjective Next(Simulation sim)
         {
             var tiles = sim.State.Tiles;
-            TileState isolated = Nearest(tiles.Where(t => (Simulation.NeedsWorker(t.Building) || t.Building == BuildingKind.House)
-                && sim.GetPathToDepot(t.Coord) == null));
-            if (isolated != null)
-                return new SettlementObjective("Connect your settlement", "Connect the " + Simulation.BuildingName(isolated.Building)
-                    + " at " + isolated.Coord + " to the depot with roads or adjoining buildings.", isolated.Coord);
-            bool foodSupply = tiles.Any(t => (t.Building == BuildingKind.Forager || t.Building == BuildingKind.Farm) && !t.WorkPaused);
-            if (!foodSupply || sim.State.Town.LastMealMissed)
-            {
-                // Prefer clear ground so the starter forest remains available for logging.
-                TileState site = Nearest(tiles.Where(t => t.Claimed && t.Building == BuildingKind.None && !t.SaplingPlanted
-                    && t.Terrain == TerrainKind.Grass)) ?? Nearest(tiles.Where(t => t.Claimed && t.Building == BuildingKind.None
-                    && !t.SaplingPlanted && t.Terrain == TerrainKind.Forest));
-                return new SettlementObjective("Feed your citizens", "Use Town [T] to build a forager for 6 timber. Each meal needs "
-                    + sim.MealDemand + " food. Forage by hand [F] on owned grass or forest to recover from shortages.", site?.Coord ?? Depot);
-            }
-            if (sim.ResearchPoints > 0)
-                return new SettlementObjective("Choose your research", "Open Research [R]: " + sim.ResearchPoints
-                    + " point(s) available. Unlock farms, replanting foresters or deeper mines; each costs 1 point.");
-            if (sim.ConnectedVacancies == 0 && (sim.State.Town.EarnedMilestones < 3
-                || tiles.Any(t => Simulation.NeedsWorker(t.Building) && !t.WorkPaused && sim.GetWorkersAssigned(t.Coord) == 0)))
-            {
-                TileState site = Nearest(tiles.Where(t => t.Claimed && t.Building == BuildingKind.None && !t.SaplingPlanted
-                    && t.Terrain != TerrainKind.Water && t.TreesRemaining == 0 && t.OreRemaining == 0));
-                return new SettlementObjective("Welcome more citizens", site != null
-                    ? "Build a house at " + site.Coord + " for 8 timber. Connected homes hold 4 newcomers; food supports a wave of 2 every 20 s."
-                    : "Clear or claim land for another house (8 timber). More citizens staff workplaces and earn research at 6, 10 and 14 citizens.", site?.Coord);
-            }
-            if (sim.State.Town.Population < 6)
-                return new SettlementObjective("Your first newcomers", sim.GetImmigrationStatus(),
-                    Nearest(tiles.Where(t => t.Building == BuildingKind.House))?.Coord);
+            TileState isolated = Nearest(tiles.Where(t => t.Building != BuildingKind.None && sim.GetPathToDepot(t.Coord) == null));
+            if (isolated != null) return new SettlementObjective("Connect your settlement", "Connect this " + Simulation.BuildingName(isolated.Building)
+                + " with roads or adjoining buildings. Roads cost 2 timber.", isolated.Coord);
+            TileState food = Nearest(tiles.Where(t => t.Building == BuildingKind.Forager || t.Building == BuildingKind.Farm));
+            if (food == null || sim.State.Town.LastMealMissed)
+                return new SettlementObjective("Feed your citizens", "Build a forager lodge for " + Simulation.CostText(Simulation.GetBuildCost(BuildingKind.Forager))
+                    + " and assign a worker. Hand foraging [F] supplies 2 food every 8 seconds.", food?.Coord ?? new HexCoord(-1, 1));
+            if (food.Workers == 0) return new SettlementObjective("Assign your food crew", "Select the lodge and assign a worker. New citizens remain available until you choose their workplace.", food.Coord);
+            if (sim.ConnectedVacancies == 0 && sim.State.Town.Population < 10)
+                return new SettlementObjective("Welcome more citizens", "Build a connected cottage for " + Simulation.CostText(Simulation.GetBuildCost(BuildingKind.House))
+                    + ". Its four places fill one at a time, every 90 supported seconds.", Nearest(tiles.Where(ClearOwned))?.Coord);
+            if (sim.State.Town.Population < 6) return new SettlementObjective("Your first newcomers", sim.GetImmigrationStatus());
+            if (sim.State.Town.ResearchJob != ResearchKind.None) return new SettlementObjective("Research in progress",
+                Simulation.ResearchName(sim.State.Town.ResearchJob) + ": " + Math.Ceiling(Simulation.ResearchSeconds(sim.State.Town.ResearchJob)
+                - sim.State.Town.ResearchProgress) + " seconds remain. Keep food supplied and prepare materials.");
             return NextIndustry(sim);
         }
-
         public static SettlementObjective NextIndustry(Simulation sim)
         {
-            List<TileState> tiles = sim.State.Tiles;
-            var producers = tiles.Where(t => t.Building == BuildingKind.Smelter
-                || t.Building == BuildingKind.Forestry && t.TreesRemaining > 0
-                || t.Building == BuildingKind.Mine && t.OreRemaining > 0
-                || t.Building == BuildingKind.DeepMine && t.DeepOreRemaining > 0).ToList();
-            TileState isolated = Nearest(producers.Where(t => sim.GetPathToDepot(t.Coord) == null));
-            if (isolated != null)
-                return new SettlementObjective("Reconnect production", "Connect the " + Name(isolated.Building)
-                    + " at " + isolated.Coord + " to the depot. Roads cost 2 timber per tile; adjoining buildings also connect.", isolated.Coord);
-
-            bool forestry = producers.Any(t => t.Building == BuildingKind.Forestry);
-            bool mine = producers.Any(t => t.Building == BuildingKind.Mine || t.Building == BuildingKind.DeepMine);
-            bool smelter = producers.Any(t => t.Building == BuildingKind.Smelter);
-            // Depletion, expansion and refining survive automatic building removal and save/load.
-            // No separate tutorial flags or save-schema changes are needed.
-            bool developed = smelter || tiles.Any(t => t.Claimed && HexCoord.Distance(t.Coord, Depot) > 1)
-                || sim.GetTile(new HexCoord(-1, 0)).TreesRemaining == 0
-                || sim.GetTile(new HexCoord(1, 0)).OreRemaining == 0;
-
-            if (!mine && smelter && sim.State.Stock.Ore < Simulation.OrePerMetal && sim.State.Stock.Timber >= 20)
-                return Supply(sim, BuildingKind.Mine, "Restore ore supply");
-            if (!forestry)
-                return Supply(sim, BuildingKind.Forestry, developed ? "Restore timber supply" : "Start timber production");
-            if (!mine)
-                return Supply(sim, BuildingKind.Mine, developed ? "Restore ore supply" : "Start iron mining");
-            if (!smelter)
+            var tiles = sim.State.Tiles;
+            TileState unstaffed = Nearest(tiles.Where(t => Simulation.NeedsWorker(t.Building) && !t.WorkPaused && t.Workers == 0));
+            if (unstaffed != null && sim.IdleCitizens > 0) return new SettlementObjective("Put citizens to work", "Assign a crew to this "
+                + Simulation.BuildingName(unstaffed.Building) + ". More workers speed the job; each workplace still waits for its own cart.", unstaffed.Coord);
+            if (!tiles.Any(t => t.Building == BuildingKind.Forestry && t.TreesRemaining > 0)) return Supply(sim, BuildingKind.Forestry, "Restore timber supply");
+            if (!sim.HasResearch(ResearchKind.Brickmaking)) return new SettlementObjective("Learn brick firing",
+                "Claim the clay bed for 6 timber; gather clay by hand or staff a clay pit. Research Brick firing at six citizens: "
+                + Simulation.CostText(Simulation.ResearchCost(ResearchKind.Brickmaking)) + ".", Nearest(tiles.Where(t => t.ClayRemaining > 0))?.Coord);
+            if (!tiles.Any(t => t.Building == BuildingKind.Kiln)) return new SettlementObjective("Fire the first bricks", "Build a brick kiln for "
+                + Simulation.CostText(Simulation.GetBuildCost(BuildingKind.Kiln)) + ". Assign a crew: 4 clay + 2 timber becomes 2 bricks.", Nearest(tiles.Where(ClearOwned))?.Coord);
+            if (!sim.HasResearch(ResearchKind.PrimitiveSmelting)) return new SettlementObjective("Learn primitive smelting", "Welcome eight citizens and research Primitive smelting for "
+                + Simulation.CostText(Simulation.ResearchCost(ResearchKind.PrimitiveSmelting)) + ". Keep timber for kiln fuel and consider Woodland stewardship.");
+            TileState bloomery = Nearest(tiles.Where(t => t.Building == BuildingKind.Bloomery));
+            if (!sim.HasResearch(ResearchKind.Refining))
             {
-                TileState site = Nearest(tiles.Where(t => t.Claimed && t.Building == BuildingKind.None
-                    && t.TreesRemaining == 0 && t.OreRemaining == 0 && !t.SaplingPlanted));
-                if (site == null)
-                    return new SettlementObjective("Make room for refining", "Clear a claimed resource tile by gathering, or claim clear land. A smelter needs an empty site.");
-                return new SettlementObjective("Refine your first metal", "Build a smelter at " + site.Coord
-                    + " for 20 timber + 4 metal. Connect it to the depot; each metal uses 2 ore.", site.Coord);
+                if (bloomery == null) return new SettlementObjective("Make metal without metal", "Build a primitive bloomery for "
+                    + Simulation.CostText(Simulation.GetBuildCost(BuildingKind.Bloomery)) + ". Hand mining provides the ore.", Nearest(tiles.Where(ClearOwned))?.Coord);
+                return new SettlementObjective("Smelt a manual batch", "Assign one worker and press Start batch. Each batch reserves 3 ore + 3 timber for 1 metal, then waits for delivery. At ten citizens, research Efficient refining.", bloomery.Coord);
             }
-
-            TileState runningLow = Nearest(producers.Where(t => t.Building == BuildingKind.Forestry && t.TreesRemaining <= 2
-                || t.Building == BuildingKind.Mine && t.OreRemaining <= 4));
-            if (runningLow != null)
-                return Supply(sim, runningLow.Building, runningLow.Building == BuildingKind.Forestry ? "Plan the next forest" : "Plan the next mine");
-
-            TileState frontier = Nearest(tiles.Where(t => !t.Claimed && t.Terrain != TerrainKind.Water
-                && (t.TreesRemaining > 0 || t.OreRemaining > 0) && TouchesClaim(sim, t.Coord)));
-            if (frontier != null)
-                return new SettlementObjective("Secure the next deposit", "Claim " + frontier.Coord + " for 6 timber + 1 metal: "
-                    + Deposit(frontier) + ". Connect new production with roads; shorter routes deliver more often.", frontier.Coord);
-            return new SettlementObjective("Keep metal flowing", "Your production loop is connected. Inspect sites for remaining deposits and delivery times, then extend roads toward fresh resources.");
+            if (!tiles.Any(t => t.Building == BuildingKind.Smelter)) return new SettlementObjective("Build an efficient foundry", "Save "
+                + Simulation.CostText(Simulation.GetBuildCost(BuildingKind.Smelter)) + ". A staffed foundry automatically turns 2 ore + 1 timber into metal, faster than a bloomery.", Nearest(tiles.Where(ClearOwned))?.Coord);
+            if (!sim.HasResearch(ResearchKind.Surveying)) return new SettlementObjective("Survey the frontier", "Research Frontier surveying, then build a connected watchtower. It reveals new land without claiming it.");
+            if (!tiles.Any(t => t.Building == BuildingKind.Watchtower)) return new SettlementObjective("Build a watchtower", "Claim a clear frontier plot for 6 timber and build a watchtower for "
+                + Simulation.CostText(Simulation.GetBuildCost(BuildingKind.Watchtower)) + ". Connect it to reveal more resources.", new HexCoord(0, 2));
+            if (!sim.HasResearch(ResearchKind.QuarryTools)) return new SettlementObjective("Work discovered stone", "Research Stoneworking, then Quarrying tools. Claim and connect a stone outcrop before staffing its quarry.");
+            return new SettlementObjective("Grow the frontier", "Use delivered stone to research Frontier masonry and reinforce a watchtower. Replant timber, reach deeper iron and keep the village supplied.");
         }
+        private static bool ClearOwned(TileState tile) => tile.Claimed && tile.Building == BuildingKind.None && !tile.SaplingPlanted
+            && tile.Terrain != TerrainKind.Water && tile.TreesRemaining == 0 && tile.OreRemaining == 0 && tile.StoneRemaining == 0 && tile.ClayRemaining == 0;
 
         private static SettlementObjective Supply(Simulation sim, BuildingKind kind, string heading)
         {
@@ -117,7 +83,7 @@ namespace AlphaHex.Core
                 TileState deep = Nearest(sim.State.Tiles.Where(t => t.Claimed && t.Building == BuildingKind.None
                     && t.InitialOre > 0 && t.OreRemaining == 0 && t.DeepOreRemaining > 0));
                 if (deep != null) return new SettlementObjective("Mine below the quarry", "Build a deep mine at " + deep.Coord
-                    + " for 20 timber + 6 metal. " + deep.DeepOreRemaining + " finite deep ore remains.", deep.Coord);
+                    + " for " + Simulation.CostText(Simulation.GetBuildCost(BuildingKind.DeepMine)) + ". " + deep.DeepOreRemaining + " finite deep ore remains.", deep.Coord);
             }
             Func<TileState, bool> available = t => t.Building == BuildingKind.None
                 && (timber ? t.TreesRemaining > 0 : t.OreRemaining > 0);
@@ -153,7 +119,7 @@ namespace AlphaHex.Core
                     {
                         string direction = step == coord ? "Claim " + coord + ": " + Deposit(next) + "."
                             : "Claim " + step + " toward " + (timber ? "forest " : "ore ") + coord + ".";
-                        return new SettlementObjective(heading, direction + " Each claim costs 6 timber + 1 metal. Then build a "
+                        return new SettlementObjective(heading, direction + " Each claim costs 6 timber. Then build a "
                             + Name(kind) + " and connect it to the depot.", step);
                     }
                     queue.Enqueue(next);
@@ -170,7 +136,7 @@ namespace AlphaHex.Core
 
         private static bool TouchesClaim(Simulation sim, HexCoord coord) => coord.Neighbors().Any(c => sim.GetTile(c)?.Claimed == true);
         private static string Name(BuildingKind kind) => Simulation.BuildingName(kind).ToLowerInvariant();
-        private static string Cost(BuildingKind kind) => kind == BuildingKind.Forestry ? "10 timber" : "14 timber + 2 metal";
+        private static string Cost(BuildingKind kind) => Simulation.CostText(Simulation.GetBuildCost(kind));
         private static string Deposit(TileState tile) => tile.TreesRemaining > 0
             ? tile.TreesRemaining + " trees / " + (tile.TreesRemaining * Simulation.TimberPerTree) + " timber"
             : tile.OreRemaining + " ore";

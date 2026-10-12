@@ -1,0 +1,6 @@
+{
+  "name": "AlphaHex.Runtime",
+  "rootNamespace": "AlphaHex.Runtime",
+  "references": ["AlphaHex.Core", "Unity.ugui"],
+  "autoReferenced": true
+}

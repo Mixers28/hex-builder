@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using AlphaHex.Core;
@@ -9,640 +10,174 @@ namespace AlphaHex.SimulationChecks
     internal static partial class Program
     {
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { IncludeFields = true };
-        private static readonly HexCoord Forest = new HexCoord(-1, 0);
-        private static readonly HexCoord Mine = new HexCoord(1, 0);
-        private static readonly HexCoord Smelter = new HexCoord(0, 1);
-        private static int _passed;
-
+        private static readonly HexCoord Forest = new HexCoord(-1, 0), Mine = new HexCoord(1, 0), Smelter = new HexCoord(1, -1), Home = new HexCoord(0, 1), Clay = new HexCoord(0, -2);
         private static int Main()
         {
-            var checks = new (string Name, Action Run)[]
-            {
-                ("Deterministic island and a usable starter area", DeterministicIsland),
-                ("Claims enforce adjacency, ownership and payment", Claims),
-                ("Building placement preserves resources and construction costs", Construction),
-                ("Manual gathering depletes finite resources exactly once", ManualConservation),
-                ("Disconnected production pauses and connected output travels", NetworkAndDeliveries),
-                ("The final ore batch cannot be duplicated", LastOreBatch),
-                ("Full automated extraction conserves finite timber and ore", AutomatedDepletion),
-                ("Exhausted extractors clear only after their saved final delivery arrives", FinalDeliveryCleanup),
-                ("Manual depletion clears idle extractors and preserves outgoing cargo", ManualExtractorCleanup),
-                ("Cleared extractors preserve other producers' delivery routes", CleanupPreservesRoutes),
-                ("Older saves clean up exhausted extractors when simulation resumes", LegacyExtractorCleanup),
-                ("HUD totals separate available, moving and reserved resources", ProductionFeedback),
-                ("Production feedback explains disconnection and full capacity", BlockedProductionFeedback),
-                ("Guidance advances through the first production loop without changing state", FirstLoopGuidance),
-                ("Guidance survives depletion and save/load without repeating the starter", DepletionGuidance),
-                ("Guidance prioritizes disconnected and starved production", StalledProductionGuidance),
-                ("Guidance targets legal frontier steps and handles finite resources", FrontierGuidance),
-                ("Smelters reserve shared input exactly once", SharedSmeltingInputs),
-                ("Demolition returns reserved input and preserves active delivery routes", Demolition),
-                ("Mine-to-smelter chain conserves ore across stock, jobs and shipments", ProductionConservation),
-                ("Save and load resume an active delivery", DeliverySaveContinuity),
-                ("Save and load resume reserved input and partial jobs", JobSaveContinuity),
-                ("Small and large timesteps produce the same world", TimestepConsistency),
-                ("Invalid save payloads fail before simulation starts", InvalidSaves),
-                ("Invalid tick durations cannot alter the world", InvalidTicks),
-                ("Connected housing, food and milestones grow a town", TownGrowth),
-                ("Food shortages pause immigration and hand foraging recovers it", FoodRecovery),
-                ("Food workplaces have staffing priority and pausing releases citizens", Staffing),
-                ("Research gates buildings and points cannot be spent twice", ResearchUnlocks),
-                ("Foresters regrow timber and keep managed logging sites", Replanting),
-                ("Deep mining conserves finite reserves through saves and demolition", DeepExtraction),
-                ("Town production and growth resume identically after saving", TownContinuity),
-                ("Legacy migration copies old worlds and provisions them only once", TownMigration),
-                ("Town save validation rejects inconsistent residents and research", InvalidTownSaves),
-                ("Town guidance teaches food, housing and research without buying anything", TownGuidance)
+            var tests = new (string, Action)[] {
+                ("Seeded discovery and starter resources", Generation), ("Rejected commands are atomic; claims need no metal", Claims),
+                ("New construction prerequisites and costs", Construction), ("Manual recovery conserves finite deposits", ManualConservation),
+                ("Disconnected production, jobs and delivery latency", Network), ("Final extraction survives saving and clears after delivery", FinalDelivery),
+                ("Shared processor inputs are reserved exactly once", Reservations), ("Manual batches require crews and explicit requests", Batches),
+                ("Demolition refunds inputs once and protects routes", Demolition), ("All resource counters include cargo and reservations", Capacity),
+                ("Fixed timesteps and partial clocks survive saves", Continuity), ("Malformed states are rejected", InvalidStates),
+                ("Manual crews, gradual migration and hunger recovery", TownGrowth), ("Research payments and prerequisites", Research),
+                ("Renewable woodland and finite deep reserves", Renewal), ("Permanent exploration and tower reinforcement", Exploration),
+                ("Unity schemas 1 and 2 migrate without editing their source", UnityMigration), ("Godot jobs, crews, discoveries and cargo migrate", GodotMigration),
+                ("Corrupt legacy records do not become valid during migration", InvalidMigration), ("Guidance is current and read-only", Guidance),
+                ("Zero-metal start reaches an efficient foundry using commands", Playthrough)
             };
-
-            foreach (var check in checks)
-            {
-                try
-                {
-                    check.Run();
-                    _passed++;
-                    Console.WriteLine("PASS  " + check.Name);
-                }
-                catch (Exception exception)
-                {
-                    Console.Error.WriteLine("FAIL  " + check.Name + "\n" + exception);
-                    return 1;
-                }
-            }
-            Console.WriteLine("\n" + _passed + " simulation checks passed against the Unity project's actual Core source.");
-            return 0;
+            int failed = 0;
+            foreach (var test in tests) try { test.Item2(); Console.WriteLine("PASS " + test.Item1); }
+                catch (Exception error) { failed++; Console.Error.WriteLine("FAIL " + test.Item1 + "\n" + error); }
+            Console.WriteLine($"{tests.Length - failed}/{tests.Length} checks passed against production Core."); return failed == 0 ? 0 : 1;
         }
-
-        private static void DeterministicIsland()
-        {
-            Simulation first = Simulation.Create(417);
-            Simulation same = Simulation.Create(417);
-            Simulation different = Simulation.Create(418);
-            Equal(Save(first.State), Save(same.State), "Same seed produced a different payload.");
-            Check(!first.State.Tiles.Select(t => (t.Terrain, t.Elevation, t.TreesRemaining, t.OreRemaining))
-                .SequenceEqual(different.State.Tiles.Select(t => (t.Terrain, t.Elevation, t.TreesRemaining, t.OreRemaining))),
-                "Different seeds only changed the seed field.");
-            Equal(127, first.State.Tiles.Count, "Radius-6 tile count.");
-            Equal(7, first.State.Tiles.Count(t => t.Claimed), "Starter claims.");
-            foreach (int seed in new[] { int.MinValue, -1, 0, 1, 417, 1000000, int.MaxValue })
-            {
-                Simulation sim = Simulation.Create(seed);
-                Check(sim.GetTile(Forest).Claimed && sim.GetTile(Forest).TreesRemaining > 0, "Missing starter forest.");
-                Check(sim.GetTile(Mine).Claimed && sim.GetTile(Mine).OreRemaining > 0, "Missing starter mine.");
-                Equal(TerrainKind.Grass, sim.GetTile(Smelter).Terrain, "Starter smelter ground.");
-                Equal(6, new HexCoord(0, 0).Neighbors().Distinct().Count(), "Hex neighbors.");
-                Check(new HexCoord(0, 0).Neighbors().All(c => HexCoord.Distance(c, new HexCoord(0, 0)) == 1), "Hex distance.");
-            }
-        }
-
-        private static void Claims()
-        {
-            Simulation sim = Simulation.Create();
-            string before = Save(sim.State);
-            Check(!sim.TryClaim(new HexCoord(4, 0), out _), "Distant claim succeeded.");
-            Check(!sim.TryClaim(new HexCoord(999, 999), out _), "Off-map claim succeeded.");
-            Check(!sim.TryClaim(Mine, out _), "Duplicate claim succeeded.");
-            TileState water = sim.State.Tiles.First(t => t.Terrain == TerrainKind.Water);
-            Check(!sim.TryClaim(water.Coord, out _), "Water claim succeeded.");
-            Equal(before, Save(sim.State), "Rejected claims changed the world.");
-            Check(sim.TryClaim(new HexCoord(2, 0), out _), "Adjacent ore claim failed.");
-            Equal(74, sim.State.Stock.Timber, "Claim timber cost.");
-            Equal(9, sim.State.Stock.Metal, "Claim metal cost.");
-            Check(!sim.TryExcavate(new HexCoord(-2, 0), out _), "An unclaimed resource was mined.");
-
-            WorldState poor = Clone(Simulation.Create().State);
-            poor.Stock.Metal = 0;
-            Simulation unaffordable = new Simulation(poor);
-            Check(!unaffordable.TryClaim(new HexCoord(2, 0), out _), "Unfunded claim succeeded.");
-            Equal(80, poor.Stock.Timber, "An unfunded claim spent part of its price.");
-        }
-
-        private static void Construction()
-        {
-            Simulation sim = Simulation.Create();
-            string before = Save(sim.State);
-            Check(!sim.TryBuild(Forest, BuildingKind.Smelter, out _), "Smelter destroyed a standing forest.");
-            Check(!sim.TryBuild(Smelter, BuildingKind.Mine, out _), "Mine was built without ore.");
-            Check(!sim.TryBuild(Smelter, BuildingKind.Depot, out _), "Second depot was built.");
-            Check(!sim.TryBuild(Smelter, (BuildingKind)99, out _), "Unknown building was accepted.");
-            Equal(before, Save(sim.State), "Rejected building changed the world.");
-            Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry build failed.");
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Smelter build failed.");
-            Equal(36, sim.State.Stock.Timber, "First production chain timber cost.");
-            Equal(4, sim.State.Stock.Metal, "First production chain metal cost.");
-            Check(!sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Duplicate building succeeded.");
-            Check(!sim.TryBuildRoad(Forest, out _), "A redundant road was charged under a building.");
-            Equal(12, sim.GetTile(Forest).TreesRemaining, "Constructing forestry consumed trees.");
-        }
-
-        private static void ManualConservation()
-        {
-            Simulation sim = Simulation.Create();
-            int trees = sim.GetTile(Forest).TreesRemaining;
-            for (int i = 0; i < trees; i++) Check(sim.TryHarvest(Forest, out _), "Manual forest depletion stopped early.");
-            Equal(80 + trees * 3, sim.State.Stock.Timber, "Manual timber total.");
-            Equal(TerrainKind.Grass, sim.GetTile(Forest).Terrain, "Cleared forest terrain.");
-            Check(!sim.GetTile(Forest).HasRoad, "Hand gathering on bare land created a road.");
-            string cleared = Save(sim.State);
-            Check(!sim.TryHarvest(Forest, out _), "Depleted forest yielded timber.");
-            Equal(cleared, Save(sim.State), "Rejected harvest changed state.");
-
-            int ore = sim.GetTile(Mine).InitialOre;
-            for (int i = 0; i < ore; i++) Check(sim.TryExcavate(Mine, out _), "Hand mining stopped early.");
-            Equal(ore, sim.State.Stock.Ore, "Manual ore total.");
-            Equal(3, sim.GetTile(Mine).ExcavationDepth, "Quarry did not reach its final stage.");
-            Equal(TerrainKind.Rock, sim.GetTile(Mine).Terrain, "Depleted ore terrain.");
-            Check(!sim.GetTile(Mine).HasRoad, "Hand mining on bare land created a road.");
-            Check(!sim.TryExcavate(Mine, out _), "Depleted ore was duplicated.");
-            new Simulation(Clone(sim.State));
-        }
-
-        private static void NetworkAndDeliveries()
-        {
-            Simulation sim = Simulation.Create();
-            HexCoord source = new HexCoord(2, 0);
-            Check(sim.TryClaim(source, out _), "Source claim failed.");
-            Check(sim.TryBuild(source, BuildingKind.Mine, out _), "Disconnected mine build failed.");
-            Check(sim.GetPathToDepot(source) == null, "Empty owned land counted as a road.");
-            sim.Tick(60);
-            Equal(48, sim.GetTile(source).OreRemaining, "Disconnected mine extracted ore.");
-            Equal(0, sim.State.Shipments.Count, "Disconnected mine sent output.");
-            Check(sim.GetStatus(source).Contains("connect"), "Disconnected status has no actionable reason.");
-
-            Check(sim.TryBuildRoad(Mine, out _), "Connecting road failed.");
-            Equal(3, sim.GetPathToDepot(source).Count, "Connected path length.");
-            sim.Tick(5);
-            Equal(0, sim.State.Stock.Ore, "Output entered stock before delivery.");
-            Equal(1, sim.State.Shipments.Count, "Expected one mine output shipment.");
-            Equal(46, sim.GetTile(source).OreRemaining, "Output did not consume the deposit exactly once.");
-            sim.Tick(1.375f);
-            Equal(0, sim.State.Stock.Ore, "Delivery arrived before route travel finished.");
-            Equal(0f, sim.GetTile(source).WorkProgress, "Building produced during its own delivery.");
-            Check(!sim.TryDemolish(Mine, out _), "An active delivery road was removed.");
-            sim.Tick(0.125f);
-            Equal(2, sim.State.Stock.Ore, "Delivery did not arrive.");
-            Check(sim.TryDemolish(Mine, out _), "Idle road removal failed.");
-            sim.Tick(30);
-            Equal(46, sim.GetTile(source).OreRemaining, "Mine kept producing after its road was removed.");
-        }
-
-        private static void LastOreBatch()
-        {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            for (int i = 0; i < 35; i++) Check(sim.TryExcavate(Mine, out _), "Hand mining failed.");
-            sim.Tick(5);
-            Equal(1, sim.State.Shipments.Single().Amount, "The last one ore became a full two-ore batch.");
-            Equal(35, sim.State.Stock.Ore, "Output arrived early.");
-            Check(!sim.TryExcavate(Mine, out _), "Manual action duplicated the in-flight final ore.");
-            sim.Tick(100);
-            Equal(36, sim.State.Stock.Ore, "Final ore conservation.");
-            Equal(0, sim.State.Shipments.Count, "A depleted mine kept shipping.");
-        }
-
-        private static void AutomatedDepletion()
-        {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry build failed.");
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            int startTimber = sim.State.Stock.Timber;
-            sim.Tick(200);
-            Equal(startTimber + 36, sim.State.Stock.Timber, "Automated timber yield.");
-            Equal(36, sim.State.Stock.Ore, "Automated ore yield.");
-            Equal(0, sim.State.Shipments.Count, "Depleted extraction retained shipments.");
-            Equal(0, sim.GetTile(Forest).TreesRemaining, "Forest not depleted.");
-            Equal(0, sim.GetTile(Mine).OreRemaining, "Mine not depleted.");
-            Equal(3, sim.GetTile(Mine).ExcavationDepth, "Automatic quarry stages.");
-            foreach (HexCoord coord in new[] { Forest, Mine })
-            {
-                Equal(BuildingKind.None, sim.GetTile(coord).Building, "Exhausted building remained.");
-                Check(sim.GetTile(coord).HasRoad, "The extractor's access road was lost.");
-            }
-            new Simulation(Clone(sim.State));
-        }
-
-        private static void FinalDeliveryCleanup()
-        {
-            foreach (BuildingKind kind in new[] { BuildingKind.Forestry, BuildingKind.Mine })
-            {
-                Simulation sim = Simulation.Create();
-                HexCoord coord = kind == BuildingKind.Forestry ? Forest : Mine;
-                Check(sim.TryBuild(coord, kind, out _), "Extractor build failed.");
-                GatherToRemaining(sim, coord, 1);
-                sim.Tick(kind == BuildingKind.Forestry ? Simulation.ForestrySeconds : Simulation.MineSeconds);
-                Equal(kind, sim.GetTile(coord).Building, "Final cargo lost its source building.");
-                Check(sim.GetStatus(coord).Contains("Final delivery"), "Final delivery status was missing.");
-                int timber = sim.State.Stock.Timber;
-                int ore = sim.State.Stock.Ore;
-                int metal = sim.State.Stock.Metal;
-                Simulation loaded = new Simulation(Clone(sim.State));
-                sim.Tick(0.625f);
-                Equal(kind, sim.GetTile(coord).Building, "Extractor cleared before cargo arrived.");
-                sim.Tick(0.125f);
-                loaded.Tick(0.75f);
-                Equal(Save(sim.State), Save(loaded.State), "Final delivery cleanup diverged after loading.");
-                Equal(BuildingKind.None, sim.GetTile(coord).Building, "Delivered extractor remained.");
-                Check(sim.GetTile(coord).HasRoad, "Cleanup lost the access road.");
-                Equal(0, sim.State.Shipments.Count, "Final shipment remained after arrival.");
-                sim.Tick(100);
-                Equal(timber + (kind == BuildingKind.Forestry ? 3 : 0), sim.State.Stock.Timber, "Final timber yield or construction refund.");
-                Equal(ore + (kind == BuildingKind.Mine ? 1 : 0), sim.State.Stock.Ore, "Final ore yield.");
-                Equal(metal, sim.State.Stock.Metal, "Cleanup refunded construction metal.");
-                Check(sim.TryBuild(coord, BuildingKind.Smelter, out _), "Cleared site could not be reused.");
-                new Simulation(Clone(sim.State));
-            }
-        }
-
-        private static void ManualExtractorCleanup()
-        {
-            foreach (BuildingKind kind in new[] { BuildingKind.Forestry, BuildingKind.Mine })
-            foreach (bool delivering in new[] { false, true })
-            foreach (bool connected in new[] { false, true })
-            {
-                if (delivering && !connected) continue;
-                Simulation sim = Simulation.Create();
-                HexCoord coord = new HexCoord((kind == BuildingKind.Forestry ? -1 : 1) * (connected ? 1 : 2), 0);
-                if (!connected) Check(sim.TryClaim(coord, out _), "Frontier claim failed.");
-                Check(sim.TryBuild(coord, kind, out _), "Extractor build failed.");
-                int timber = sim.State.Stock.Timber;
-                int ore = sim.State.Stock.Ore;
-                int trees = sim.GetTile(coord).TreesRemaining;
-                int deposit = sim.GetTile(coord).OreRemaining;
-                sim.Tick(delivering ? (kind == BuildingKind.Forestry ? Simulation.ForestrySeconds : Simulation.MineSeconds) : 0.5f);
-                GatherToRemaining(sim, coord, 0);
-                Equal(delivering ? kind : BuildingKind.None, sim.GetTile(coord).Building, "Manual depletion cleanup timing.");
-                Equal(0f, sim.GetTile(coord).WorkProgress, "Depleted extractor kept partial work.");
-                new Simulation(Clone(sim.State));
-                sim.Tick(1);
-                Equal(BuildingKind.None, sim.GetTile(coord).Building, "Manually exhausted extractor remained.");
-                Check(sim.GetTile(coord).HasRoad, "Manual cleanup lost the access road.");
-                Equal(timber + trees * 3, sim.State.Stock.Timber, "Manual and automatic timber were lost or duplicated.");
-                Equal(ore + deposit, sim.State.Stock.Ore, "Manual and automatic ore were lost or duplicated.");
-                new Simulation(Clone(sim.State));
-            }
-        }
-
-        private static void CleanupPreservesRoutes()
-        {
-            Simulation sim = Simulation.Create();
-            HexCoord frontier = new HexCoord(2, 0);
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Near mine build failed.");
-            GatherToRemaining(sim, Mine, 1);
-            int initialOre = sim.State.Stock.Ore;
-            Check(sim.TryClaim(frontier, out _) && sim.TryBuild(frontier, BuildingKind.Mine, out _), "Frontier mine failed.");
-            sim.Tick(5.75f);
-            Equal(BuildingKind.None, sim.GetTile(Mine).Building, "Exhausted transit building remained.");
-            Check(sim.State.Shipments.Single().Path.Contains(Mine), "Expected delivery through the cleared site.");
-            Equal(3, sim.GetPathToDepot(frontier).Count, "Cleanup disconnected the frontier.");
-            Simulation loaded = new Simulation(Clone(sim.State));
-            sim.Tick(7.25f);
-            loaded.Tick(7.25f);
-            Equal(Save(sim.State), Save(loaded.State), "A shipment across the cleared site failed after loading.");
-            Equal(initialOre + 5, sim.State.Stock.Ore, "Frontier deliveries stopped or duplicated after cleanup.");
-        }
-
-        private static void LegacyExtractorCleanup()
-        {
-            Simulation sim = Simulation.Create();
-            GatherToRemaining(sim, Forest, 0);
-            GatherToRemaining(sim, Mine, 0);
-            // Version-1 saves allowed depleted, idle buildings without explicit roads.
-            sim.GetTile(Forest).Building = BuildingKind.Forestry;
-            sim.GetTile(Mine).Building = BuildingKind.Mine;
-            Simulation loaded = new Simulation(Clone(sim.State));
-            int timber = loaded.State.Stock.Timber;
-            int ore = loaded.State.Stock.Ore;
-            loaded.Tick(0.125f);
-            foreach (HexCoord coord in new[] { Forest, Mine })
-            {
-                Equal(BuildingKind.None, loaded.GetTile(coord).Building, "Legacy exhausted building remained.");
-                Check(loaded.GetTile(coord).HasRoad, "Legacy cleanup lost its network tile.");
-            }
-            Equal(timber, loaded.State.Stock.Timber, "Legacy cleanup awarded timber.");
-            Equal(ore, loaded.State.Stock.Ore, "Legacy cleanup awarded ore.");
-            Equal(BuildingKind.Depot, loaded.GetTile(new HexCoord(0, 0)).Building, "Cleanup removed the depot.");
-            new Simulation(Clone(loaded.State));
-        }
-
-        private static void GatherToRemaining(Simulation sim, HexCoord coord, int remaining)
-        {
-            TileState tile = sim.GetTile(coord);
-            while (tile.TreesRemaining > remaining) Check(sim.TryHarvest(coord, out _), "Hand gathering failed.");
-            while (tile.OreRemaining > remaining) Check(sim.TryExcavate(coord, out _), "Hand mining failed.");
-        }
-
-        private static void ProductionFeedback()
-        {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine setup.");
-            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Smelter setup.");
-            sim.Tick(5);
-            Equal(0, sim.State.Stock.Ore, "Cargo was spendable before arrival.");
-            Equal(2, sim.GetInTransit(ResourceKind.Ore), "Moving ore total.");
-            Equal(0, sim.GetReservedOre(), "Cargo was reserved before arrival.");
-            Check(sim.GetStatus(Smelter).Contains("2 ore in transit"), "Waiting smelter did not explain incoming ore.");
-            Check(sim.GetStatus(Mine).Contains("Next job waits"), "Producer's delivery wait was not explained.");
-            sim.Tick(0.375f);
-            Equal(0.5f, sim.GetProgress(Mine), "Delivery progress.");
-            sim = new Simulation(Clone(sim.State));
-            sim.Tick(0.375f);
-            Equal(2, sim.State.Stock.Ore, "Arrived ore was not available.");
-            Equal(0, sim.GetInTransit(ResourceKind.Ore), "Arrived cargo still counted as moving.");
-            sim.Tick(0.125f);
-            Equal(0, sim.State.Stock.Ore, "Reserved input still shown as available.");
-            Equal(2, sim.GetReservedOre(), "Reserved ore disappeared from feedback.");
-            Check(sim.GetStatus(Smelter).Contains("2 ore reserved"), "Active smelter did not explain reserved input.");
-            string before = Save(sim.State);
-            sim.GetStatus(Smelter);
-            sim.GetProgress(Smelter);
-            sim.GetInTransit(ResourceKind.Metal);
-            SettlementGuide.NextIndustry(sim);
-            Equal(before, Save(sim.State), "Reading HUD state changed gameplay.");
-        }
-
-        private static void BlockedProductionFeedback()
-        {
-            Simulation sim = Simulation.Create();
-            HexCoord frontier = new HexCoord(2, 0);
-            Check(sim.TryClaim(frontier, out _) && sim.TryBuild(frontier, BuildingKind.Mine, out _), "Disconnected setup.");
-            Check(sim.GetStatus(frontier).Contains("Disconnected"), "Missing disconnected reason.");
-            Equal(0f, sim.GetProgress(frontier), "Disconnected mine progressed.");
-            sim = Simulation.Create();
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Full depot setup.");
-            sim.State.Stock.Ore = int.MaxValue;
-            sim = new Simulation(Clone(sim.State));
-            Check(sim.GetStatus(Mine).Contains("capacity is full"), "Full depot was described as working.");
-            sim.Tick(10);
-            Equal(0f, sim.GetProgress(Mine), "Full depot should block production.");
-        }
-
-        private static void FirstLoopGuidance()
-        {
-            foreach (int seed in new[] { 0, 417, int.MaxValue })
-            {
-                Simulation sim = Simulation.Create(seed);
-                Equal("Start timber production", SettlementGuide.NextIndustry(sim).Heading, "First goal.");
-                Equal((HexCoord?)Forest, SettlementGuide.NextIndustry(sim).Target, "Starter forest.");
-                Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry setup.");
-                Equal((HexCoord?)Mine, SettlementGuide.NextIndustry(sim).Target, "Starter mine.");
-                Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine setup.");
-                SettlementObjective refining = SettlementGuide.NextIndustry(sim);
-                Equal("Refine your first metal", refining.Heading, "Refining goal.");
-                Check(refining.Target.HasValue && sim.TryBuild(refining.Target.Value, BuildingKind.Smelter, out _), "Invalid suggested smelter site.");
-                string before = Save(sim.State);
-                SettlementObjective expansion = SettlementGuide.NextIndustry(sim);
-                Equal("Secure the next deposit", expansion.Heading, "Missing expansion goal.");
-                Equal(before, Save(sim.State), "Guidance awarded progress or spent stock.");
-                Check(expansion.Target.HasValue && sim.TryClaim(expansion.Target.Value, out _), "Expansion target was not claimable.");
-            }
-        }
-
-        private static void DepletionGuidance()
-        {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry setup.");
-            GatherToRemaining(sim, Forest, 1);
-            sim.Tick(Simulation.ForestrySeconds);
-            SettlementObjective finalCargo = SettlementGuide.NextIndustry(sim);
-            Equal("Restore timber supply", finalCargo.Heading, "Final delivery restarted the tutorial.");
-            sim.Tick(Simulation.DeliverySecondsPerEdge);
-            Equal(BuildingKind.None, sim.GetTile(Forest).Building, "Exhausted forestry was not cleared.");
-            SettlementObjective cleared = SettlementGuide.NextIndustry(sim);
-            Simulation restored = new Simulation(Clone(sim.State));
-            SettlementObjective loaded = SettlementGuide.NextIndustry(restored);
-            Equal(cleared.Heading, loaded.Heading, "Loading reset guidance.");
-            Equal(cleared.Target, loaded.Target, "Loading changed the suggested frontier.");
-            Check(loaded.Target.HasValue && loaded.Target.Value != Forest, "Guidance pointed to the empty forest.");
-            Check(restored.TryClaim(loaded.Target.Value, out _), "Replacement forest was not claimable.");
-            Check(restored.GetTile(loaded.Target.Value).TreesRemaining > 0, "Replacement site has no timber.");
-        }
-
-        private static void StalledProductionGuidance()
-        {
-            Simulation sim = Simulation.Create();
-            HexCoord frontier = new HexCoord(2, 0);
-            Check(sim.TryClaim(frontier, out _) && sim.TryBuild(frontier, BuildingKind.Mine, out _), "Disconnected setup.");
-            Equal("Reconnect production", SettlementGuide.NextIndustry(sim).Heading, "A new camp took priority over reconnection.");
-            Equal((HexCoord?)frontier, SettlementGuide.NextIndustry(sim).Target, "Wrong disconnected producer.");
-            sim = Simulation.Create();
-            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Starved smelter setup.");
-            Equal("Restore ore supply", SettlementGuide.NextIndustry(sim).Heading, "Idle smelter's missing ore was not prioritized.");
-            Equal((HexCoord?)Mine, SettlementGuide.NextIndustry(sim).Target, "Wrong replacement ore target.");
-            sim = Simulation.Create();
-            sim.State.Stock.Timber = 0;
-            Check(SettlementGuide.NextIndustry(sim).Detail.Contains("Gather by hand"), "Manual recovery path is not explained.");
-        }
-
-        private static void FrontierGuidance()
-        {
-            WorldState state = Simulation.Create().State;
-            HexCoord distant = state.Tiles.First(t => t.TreesRemaining > 0 && HexCoord.Distance(t.Coord, new HexCoord(0, 0)) >= 4).Coord;
-            foreach (TileState tile in state.Tiles.Where(t => t.TreesRemaining > 0 && t.Coord != distant))
-            {
-                tile.TreesRemaining = 0;
-                tile.Terrain = TerrainKind.Grass;
-            }
-            Simulation sim = new Simulation(state);
-            SettlementObjective goal = SettlementGuide.NextIndustry(sim);
-            Check(goal.Target.HasValue && goal.Target.Value != distant, "Suggested a distant illegal claim.");
-            Check(sim.TryClaim(goal.Target.Value, out _), "First step toward a distant forest was not claimable.");
-            TileState lastForest = sim.GetTile(distant);
-            lastForest.TreesRemaining = 0;
-            lastForest.Terrain = TerrainKind.Grass;
-            sim = new Simulation(Clone(sim.State));
-            goal = SettlementGuide.NextIndustry(sim);
-            Equal("Forests exhausted", goal.Heading, "Finite island still suggested new forestry.");
-            Check(!goal.Target.HasValue, "Exhausted island suggested an empty target.");
-        }
-
-        private static void SharedSmeltingInputs()
-        {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryExcavate(Mine, out _) && sim.TryExcavate(Mine, out _), "Starter ore failed.");
-            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "First smelter build failed.");
-            Check(sim.TryBuild(new HexCoord(0, -1), BuildingKind.Smelter, out _), "Second smelter build failed.");
-            int startMetal = sim.State.Stock.Metal;
-            sim.Tick(0.125f);
-            Equal(0, sim.State.Stock.Ore, "Smelter did not reserve its input.");
-            Equal(2, sim.State.Tiles.Sum(t => t.InputOreReserved), "Two smelters reserved the same ore.");
-            sim.Tick(20);
-            Equal(startMetal + 1, sim.State.Stock.Metal, "Two ore did not produce exactly one metal.");
-            Equal(0, sim.State.Tiles.Sum(t => t.InputOreReserved), "Consumed input remained reserved.");
-            Check(sim.State.Tiles.Where(t => t.Building == BuildingKind.Smelter).All(t => t.WorkProgress == 0), "Unfunded smelting continued.");
-        }
-
-        private static void Demolition()
-        {
-            Simulation sim = Simulation.Create();
-            Check(!sim.TryDemolish(new HexCoord(0, 0), out _), "The depot was removable.");
-            Check(sim.TryExcavate(Mine, out _) && sim.TryExcavate(Mine, out _), "Starter ore failed.");
-            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Smelter build failed.");
-            int timber = sim.State.Stock.Timber;
-            int metal = sim.State.Stock.Metal;
-            sim.Tick(2);
-            Equal(0, sim.State.Stock.Ore, "Input was not reserved.");
-            Check(sim.TryDemolish(Smelter, out _), "Partial job could not be demolished.");
-            Equal(2, sim.State.Stock.Ore, "Unprocessed ore was not returned.");
-            Equal(timber, sim.State.Stock.Timber, "Demolition refunded construction timber.");
-            Equal(metal, sim.State.Stock.Metal, "Demolition refunded construction metal.");
-            Check(!sim.TryDemolish(Smelter, out _), "Repeated demolition produced resources.");
-
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            sim.Tick(5);
-            Check(!sim.TryDemolish(Mine, out _), "A source with active output was demolished.");
-            sim.Tick(0.75f);
-            Check(sim.TryDemolish(Mine, out _), "Idle source could not be demolished.");
-            new Simulation(Clone(sim.State));
-        }
-
-        private static void ProductionConservation()
-        {
-            Simulation sim = Simulation.Create();
-            Check(sim.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            Check(sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Smelter build failed.");
-            int initialMetal = sim.State.Stock.Metal;
-            int originalOre = sim.GetTile(Mine).InitialOre;
-            for (int i = 0; i < 500; i++)
-            {
-                sim.Tick(0.375f);
-                int oreInFlight = sim.State.Shipments.Where(s => s.Resource == ResourceKind.Ore).Sum(s => s.Amount);
-                int metalInFlight = sim.State.Shipments.Where(s => s.Resource == ResourceKind.Metal).Sum(s => s.Amount);
-                int reserved = sim.State.Tiles.Sum(t => t.InputOreReserved);
-                int equivalentOre = sim.GetTile(Mine).OreRemaining + sim.State.Stock.Ore + oreInFlight + reserved
-                    + 2 * (sim.State.Stock.Metal - initialMetal + metalInFlight);
-                Equal(originalOre, equivalentOre, "Ore was lost or duplicated between world, inputs and output.");
-            }
-            Equal(initialMetal + 18, sim.State.Stock.Metal, "36 ore should eventually yield 18 metal.");
-            Equal(BuildingKind.Smelter, sim.GetTile(Smelter).Building, "An idle smelter was removed.");
-        }
-
-        private static void DeliverySaveContinuity()
-        {
-            Simulation original = Simulation.Create();
-            Check(original.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            original.Tick(5.31f);
-            Check(original.State.Shipments.Count == 1 && original.State.Shipments[0].Elapsed > 0, "Save scenario has no active delivery.");
-            Simulation loaded = new Simulation(Clone(original.State));
-            original.Tick(0.5f);
-            loaded.Tick(0.5f);
-            Equal(Save(original.State), Save(loaded.State), "Delivery changed across serialization.");
-            Equal(2, loaded.State.Stock.Ore, "Loaded output did not arrive exactly once.");
-            original.Tick(19.31f);
-            loaded.Tick(19.31f);
-            Equal(Save(original.State), Save(loaded.State), "Future output diverged after load.");
-        }
-
-        private static void JobSaveContinuity()
-        {
-            Simulation original = Simulation.Create();
-            Check(original.TryExcavate(Mine, out _) && original.TryExcavate(Mine, out _), "Starter ore failed.");
-            Check(original.TryBuild(Smelter, BuildingKind.Smelter, out _), "Smelter build failed.");
-            original.Tick(2.375f);
-            Equal(2, original.GetTile(Smelter).InputOreReserved, "Scenario lacks reserved input.");
-            Simulation loaded = new Simulation(Clone(original.State));
-            original.Tick(4.375f);
-            loaded.Tick(4.375f);
-            Equal(Save(original.State), Save(loaded.State), "Partial job diverged on load.");
-            Equal(7, loaded.State.Stock.Metal, "Loaded job output was lost or duplicated.");
-            Equal(0, loaded.State.Stock.Ore, "Reserved input was refunded on load.");
-        }
-
-        private static void TimestepConsistency()
-        {
-            Simulation whole = Simulation.Create();
-            Check(whole.TryBuild(Forest, BuildingKind.Forestry, out _), "Forestry build failed.");
-            Check(whole.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            Check(whole.TryBuild(Smelter, BuildingKind.Smelter, out _), "Smelter build failed.");
-            Simulation tiny = new Simulation(Clone(whole.State));
-            Simulation uneven = new Simulation(Clone(whole.State));
-            whole.Tick(60);
-            for (int i = 0; i < 6000; i++) tiny.Tick(0.01f);
-            for (int i = 0; i < 120; i++)
-            {
-                uneven.Tick(0.125f);
-                uneven.Tick(0.375f);
-            }
-            // The integral simulation, jobs and arrivals must match. Floating input
-            // partitioning may leave a sub-microsecond remainder, which is not gameplay.
-            Check(Math.Abs(tiny.State.PendingSeconds - whole.State.PendingSeconds) < 0.00001, "Clock remainder drift is excessive.");
-            tiny.State.PendingSeconds = whole.State.PendingSeconds;
-            Equal(Save(whole.State), Save(tiny.State), "Tiny frame updates produced different gameplay.");
-            Equal(Save(whole.State), Save(uneven.State), "Uneven frame updates produced different gameplay.");
-        }
-
-        private static void InvalidSaves()
-        {
-            Throws<ArgumentException>(() => new Simulation(null), "Null save.");
-            Reject(s => s.SchemaVersion = 99, "Future schema.");
-            Reject(s => s.Stock = null, "Missing stock.");
-            Reject(s => s.Stock.Ore = -1, "Negative stock.");
-            Reject(s => s.Tiles.RemoveAt(0), "Missing tile.");
-            Reject(s => s.Tiles[1].Coord = s.Tiles[0].Coord, "Duplicate coordinate.");
-            Reject(s => s.Tiles[0].Coord = new HexCoord(int.MaxValue, int.MinValue), "Overflow coordinate.");
-            Reject(s => s.Tiles.First(t => t.Terrain == TerrainKind.Water).Claimed = true, "Claimed water.");
-            Reject(s => s.Tiles.First(t => HexCoord.Distance(t.Coord, new HexCoord(0, 0)) == 4 && t.Terrain != TerrainKind.Water).Claimed = true, "Isolated claim.");
-            Reject(s => s.Tiles.First(t => t.Coord == Forest).TreesRemaining = -2, "Negative trees.");
-            Reject(s => s.Tiles.First(t => t.Coord == Mine).ExcavationDepth = 3, "Depth does not match ore.");
-            Reject(s => s.Tiles.First(t => t.Coord == Smelter).Building = (BuildingKind)123, "Unknown building.");
-            Reject(s => s.Tiles.First(t => t.Coord == Smelter).WorkProgress = float.NaN, "NaN progress.");
-            Reject(s => s.Tiles.First(t => t.Coord == Smelter).InputOreReserved = 2, "Reservation without a smelter.");
-            Reject(s => s.ElapsedSeconds = 100, "Inconsistent clock.");
-            Reject(s => s.PendingSeconds = double.PositiveInfinity, "Infinite clock.");
-
-            Simulation active = Simulation.Create();
-            Check(active.TryBuild(Mine, BuildingKind.Mine, out _), "Mine build failed.");
-            active.Tick(5.25f);
-            WorldState invalid = Clone(active.State);
-            invalid.Shipments.Add(Clone(active.State).Shipments[0]);
-            Throws<ArgumentException>(() => new Simulation(invalid), "Duplicate source shipment.");
-            invalid = Clone(active.State);
-            invalid.Shipments[0].Path[1] = new HexCoord(5, 0);
-            Throws<ArgumentException>(() => new Simulation(invalid), "Broken delivery path.");
-            invalid = Clone(active.State);
-            invalid.Shipments[0].Resource = ResourceKind.Metal;
-            Throws<ArgumentException>(() => new Simulation(invalid), "Mine shipping metal.");
-            invalid = Clone(active.State);
-            invalid.Shipments[0].Elapsed = invalid.Shipments[0].Duration;
-            Throws<ArgumentException>(() => new Simulation(invalid), "Already delivered shipment.");
-            invalid = Clone(active.State);
-            invalid.Stock.Ore = int.MaxValue;
-            Throws<ArgumentException>(() => new Simulation(invalid), "Incoming goods overflow stock.");
-        }
-
-        private static void InvalidTicks()
-        {
-            Simulation sim = Simulation.Create();
-            string before = Save(sim.State);
-            foreach (float seconds in new[] { -1f, float.NaN, float.PositiveInfinity, 3601f })
-                Throws<ArgumentOutOfRangeException>(() => sim.Tick(seconds), "Invalid tick duration.");
-            sim.Tick(0);
-            Equal(before, Save(sim.State), "Invalid or zero tick changed the world.");
-        }
-
-        private static void Reject(Action<WorldState> corrupt, string reason)
-        {
-            WorldState state = Clone(Simulation.Create().State);
-            corrupt(state);
-            Throws<ArgumentException>(() => new Simulation(state), reason);
-        }
-
+        private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+        private static void Equal<T>(T expected, T actual, string message) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception(message + $" Expected {expected}, got {actual}."); }
+        private static void Throws<T>(Action action, string message) where T : Exception { try { action(); } catch (T) { return; } throw new Exception(message); }
         private static string Save(WorldState state) => JsonSerializer.Serialize(state, JsonOptions);
         private static WorldState Clone(WorldState state) => JsonSerializer.Deserialize<WorldState>(Save(state), JsonOptions);
-        private static void Check(bool condition, string message)
+        private static Simulation Reload(Simulation sim) => new Simulation(Clone(sim.State));
+        // Deliberately provisioned fixtures isolate accounting from pacing. Playthrough uses no provisioning.
+        private static Simulation Ready()
         {
-            if (!condition) throw new InvalidOperationException(message);
+            var state = Simulation.Create().State;
+            state.Stock = new ResourceStock(10000, 100, 100, 10000, 100, 1000, 1000);
+            state.Town.Research = (ResearchKind)1023;
+            return new Simulation(state);
         }
-        private static void Equal<T>(T expected, T actual, string message)
+        private static void Build(Simulation sim, HexCoord coord, BuildingKind kind, int crew = 1)
         {
-            if (!EqualityComparer<T>.Default.Equals(expected, actual))
-                throw new InvalidOperationException(message + " Expected " + expected + ", actual " + actual + ".");
+            Check(sim.TryBuild(coord, kind, out string why), why);
+            if (Simulation.NeedsWorker(kind)) Check(sim.TryAssignWorkers(coord, crew, out why), why);
         }
-        private static void Throws<T>(Action action, string message) where T : Exception
+        private static void Claim(Simulation sim, HexCoord coord) { Check(sim.TryClaim(coord, out string why), why); }
+        private static void Road(Simulation sim, HexCoord coord) { Check(sim.TryBuildRoad(coord, out string why), why); }
+        private static void Generation()
         {
-            try { action(); }
-            catch (T) { return; }
-            throw new InvalidOperationException(message + " Expected " + typeof(T).Name + ".");
+            Equal(Save(Simulation.Create(417).State), Save(Simulation.Create(417).State), "Seed drift.");
+            Check(Save(Simulation.Create(417).State) != Save(Simulation.Create(418).State), "Seed ignored.");
+            foreach (int seed in new[] { int.MinValue, -1, 0, 1, 417, int.MaxValue })
+            {
+                var sim = Simulation.Create(seed); Equal(37, sim.State.Tiles.Count, "Starting reveal."); Equal(7, sim.State.Tiles.Count(t => t.Claimed), "Claims.");
+                Check(sim.GetTile(Forest).TreesRemaining > 0 && sim.GetTile(Mine).OreRemaining > 0 && sim.GetTile(Clay).ClayRemaining > 0, "Starter resources.");
+                Equal(0, sim.State.Stock.Metal, "Metal-free start."); Reload(sim);
+            }
+        }
+        private static void Claims()
+        {
+            var sim = Simulation.Create(); var before = Save(sim.State);
+            Check(!sim.TryClaim(new HexCoord(4, 0), out _), "Unseen claim."); Check(!sim.TryClaim(Mine, out _), "Duplicate claim.");
+            Check(!sim.TryClaim(new HexCoord(3, 0), out _), "Non-adjacent claim."); Equal(before, Save(sim.State), "Failed command mutated state.");
+            Claim(sim, Clay); Equal(74, sim.State.Stock.Timber, "Claim cost."); Equal(0, sim.State.Stock.Metal, "Claim spent metal.");
+            sim.State.Stock.Timber = 5; before = Save(sim.State); Check(!sim.TryClaim(new HexCoord(2, 0), out _), "Unaffordable claim."); Equal(before, Save(sim.State), "Partial spending.");
+        }
+        private static void Construction()
+        {
+            var sim = Simulation.Create();
+            foreach (var kind in new[] { BuildingKind.Mine, BuildingKind.Smelter, BuildingKind.Kiln, BuildingKind.Bloomery, BuildingKind.Quarry, BuildingKind.Watchtower })
+                Check(!sim.TryBuild(Smelter, kind, out _), "Missing research allowed: " + kind);
+            var state = Save(sim.State); Check(!sim.TryBuild(Forest, BuildingKind.House, out _), "House cleared trees."); Equal(state, Save(sim.State), "Rejected build consumed goods.");
+            sim = Ready(); var cost = Simulation.GetBuildCost(BuildingKind.Smelter); int wood = sim.State.Stock.Timber, brick = sim.State.Stock.Brick;
+            Build(sim, Smelter, BuildingKind.Smelter); Equal(wood - cost.Timber, sim.State.Stock.Timber, "Foundry wood."); Equal(brick - cost.Brick, sim.State.Stock.Brick, "Foundry bricks.");
+            Check(!sim.TryBuild(Smelter, BuildingKind.Smelter, out _), "Duplicate building."); Reload(sim);
+        }
+        private static void ManualConservation()
+        {
+            var sim = Simulation.Create(); Claim(sim, Clay);
+            int timber = sim.State.Stock.Timber, trees = sim.GetTile(Forest).TreesRemaining, ore = sim.GetTile(Mine).InitialOre, clay = sim.GetTile(Clay).InitialClay;
+            while (sim.TryHarvest(Forest, out _)) { } while (sim.TryExcavate(Mine, out _)) { } while (sim.TryGatherClay(Clay, out _)) { }
+            Equal(timber + trees * 3, sim.State.Stock.Timber, "Timber duplicated."); Equal(ore, sim.State.Stock.Ore, "Ore duplicated."); Equal(clay, sim.State.Stock.Clay, "Clay duplicated.");
+            Equal(3, sim.GetTile(Mine).ExcavationDepth, "Quarry stages."); Reload(sim);
+        }
+        private static void Network()
+        {
+            var sim = Ready(); var remote = new HexCoord(2, 0); Claim(sim, remote); Build(sim, remote, BuildingKind.Mine);
+            int initial = sim.GetTile(remote).OreRemaining, stock = sim.State.Stock.Ore; sim.Tick(30); Equal(initial, sim.GetTile(remote).OreRemaining, "Disconnected work.");
+            Road(sim, Mine); sim.Tick(15); Equal(initial - 2, sim.GetTile(remote).OreRemaining, "Extraction."); Equal(stock, sim.State.Stock.Ore, "Arrival was immediate.");
+            sim.Tick(2.375f); Equal(0f, sim.GetTile(remote).WorkProgress, "Producer worked during delivery."); sim.Tick(.125f); Equal(stock + 2, sim.State.Stock.Ore, "Delivery.");
+            sim.Tick(.125f); Check(sim.GetTile(remote).WorkProgress > 0, "Next job did not start.");
+        }
+        private static void FinalDelivery()
+        {
+            foreach (var kind in new[] { BuildingKind.Forestry, BuildingKind.Mine, BuildingKind.ClayPit })
+            {
+                var sim = Ready(); HexCoord coord = kind == BuildingKind.Forestry ? Forest : kind == BuildingKind.Mine ? Mine : Clay;
+                if (coord == Clay) { Claim(sim, Clay); Road(sim, new HexCoord(0, -1)); }
+                Build(sim, coord, kind);
+                var tile = sim.GetTile(coord);
+                while (tile.TreesRemaining > 1) Check(sim.TryHarvest(coord, out _), "Hand timber.");
+                while (tile.OreRemaining > 1) Check(sim.TryExcavate(coord, out _), "Hand ore.");
+                while (tile.ClayRemaining > 1) Check(sim.TryGatherClay(coord, out _), "Hand clay.");
+                sim.Tick(Simulation.JobSeconds(kind)); Check(sim.State.Shipments.Count == 1, "Final output missing.");
+                Check(!sim.TryDemolish(coord, out _), "Removed moving source."); var loaded = Reload(sim);
+                float duration = loaded.State.Shipments[0].Duration; sim.Tick(duration); loaded.Tick(duration);
+                Equal(Save(sim.State), Save(loaded.State), "Final cargo save continuity."); Equal(BuildingKind.None, loaded.GetTile(coord).Building, "Exhausted building remains.");
+                Check(loaded.GetTile(coord).HasRoad && loaded.GetTile(coord).Workers == 0, "Cleanup road/crew."); Reload(loaded);
+            }
+        }
+        private static void Reservations()
+        {
+            var sim = Ready(); Build(sim, Smelter, BuildingKind.Smelter); Build(sim, Home, BuildingKind.Smelter);
+            sim.State.Stock.Ore = 2; sim.State.Stock.Timber = 1; sim.Tick(.125f);
+            Equal(2, sim.GetReservedOre(), "Shared ore spent twice."); Equal(1, sim.State.Tiles.Sum(t => t.InputTimberReserved), "Fuel spent twice.");
+            Equal(1, sim.State.Tiles.Count(t => t.WorkProgress > 0), "Two unfunded jobs.");
+            var loaded = Reload(sim); loaded.Tick(20); Equal(101 - 8, loaded.State.Stock.Metal, "Metal output.");
+            sim = Ready(); Build(sim, Smelter, BuildingKind.Kiln); sim.State.Stock.Timber = 2; sim.State.Stock.Clay = 4;
+            sim.Tick(1); Equal(2, sim.GetTile(Smelter).InputTimberReserved, "Kiln fuel."); Equal(4, sim.GetTile(Smelter).InputClayReserved, "Kiln clay."); Reload(sim);
+        }
+        private static void Batches()
+        {
+            var sim = Ready(); Build(sim, Smelter, BuildingKind.Bloomery); int metal = sim.State.Stock.Metal;
+            sim.Tick(100); Equal(metal, sim.State.Stock.Metal, "Bloomery ran without request.");
+            Check(sim.TryStartBatch(Smelter, out _), "Batch rejected."); Check(!sim.TryStartBatch(Smelter, out _), "Duplicate batch.");
+            sim.Tick(30); Check(sim.TryToggleWork(Smelter, out _), "Pause."); float work = sim.GetTile(Smelter).WorkProgress; sim.Tick(30); Equal(work, sim.GetTile(Smelter).WorkProgress, "Paused work.");
+            sim = Reload(sim); Check(sim.TryAssignWorkers(Smelter, 1, out _), "Resume crew."); sim.Tick(61.25f); Equal(metal + 1, sim.State.Stock.Metal, "Batch output.");
+            sim.Tick(200); Equal(metal + 1, sim.State.Stock.Metal, "Batch repeated automatically."); Check(!sim.GetTile(Smelter).BatchRequested, "Request not cleared.");
+        }
+        private static void Demolition()
+        {
+            var sim = Ready(); Build(sim, Smelter, BuildingKind.Bloomery); int ore = sim.State.Stock.Ore, timber = sim.State.Stock.Timber;
+            Check(sim.TryStartBatch(Smelter, out _), "Batch."); sim.Tick(10); Check(sim.TryDemolish(Smelter, out _), "Demolition.");
+            Equal(ore, sim.State.Stock.Ore, "Ore refund."); Equal(timber, sim.State.Stock.Timber, "Fuel refund."); Check(!sim.TryDemolish(Smelter, out _), "Double refund.");
+            Check(!sim.TryDemolish(new HexCoord(0, 0), out _), "Hall removed.");
+            Build(sim, Mine, BuildingKind.Mine); sim.Tick(15); Check(!sim.TryDemolish(Mine, out _), "Delivery source removed."); Reload(sim);
+        }
+        private static void Capacity()
+        {
+            foreach (var resource in Simulation.Resources)
+            {
+                var state = Clone(Ready().State); typeof(ResourceStock).GetField(resource.ToString()).SetValue(state.Stock, -1);
+                Throws<ArgumentException>(() => new Simulation(state), "Negative stock accepted: " + resource);
+            }
+            var sim = Ready(); Build(sim, Smelter, BuildingKind.Kiln); sim.Tick(1);
+            sim.State.Stock.Clay = int.MaxValue; Throws<ArgumentException>(() => Reload(sim), "Reserved clay overflow.");
+            sim = Ready(); sim.State.Stock.Timber = int.MaxValue; Check(!sim.TryHarvest(Forest, out _), "Manual overflow.");
+            sim = Ready(); Build(sim, Mine, BuildingKind.Mine); sim.Tick(15); sim.State.Stock.Ore = int.MaxValue;
+            Throws<ArgumentException>(() => Reload(sim), "Cargo overflow.");
+        }
+        private static void Continuity()
+        {
+            var sim = Ready(); Build(sim, Mine, BuildingKind.Mine); Build(sim, Smelter, BuildingKind.Kiln);
+            sim.Tick(15.3125f); var loaded = Reload(sim); sim.Tick(120.1875f); loaded.Tick(120.1875f); Equal(Save(sim.State), Save(loaded.State), "Cargo/job/remainder changed after load.");
+            var whole = Ready(); Build(whole, Mine, BuildingKind.Mine); var small = Reload(whole);
+            whole.Tick(120); for (int i = 0; i < 960; i++) small.Tick(.125f); Equal(Save(whole.State), Save(small.State), "Timestep drift.");
+            var before = Save(whole.State); foreach (float invalid in new[] { -1f, float.NaN, float.PositiveInfinity, 3601f }) Throws<ArgumentOutOfRangeException>(() => whole.Tick(invalid), "Bad tick.");
+            Equal(before, Save(whole.State), "Bad time mutated world.");
+        }
+        private static void InvalidStates()
+        {
+            var corruptions = new Action<WorldState>[] { s => s.SchemaVersion = 100, s => s.Tiles[1].Coord = s.Tiles[0].Coord,
+                s => s.Tiles.RemoveAt(0), s => s.Town.Population++, s => s.Town.Research = ResearchKind.Refining,
+                s => s.Tiles[0].InputClayReserved = 4, s => s.PendingSeconds = .125, s => s.Town.ResearchProgress = 1,
+                s => s.Tiles[0].Workers = 1, s => s.Tiles[0].TowerLevel = 1, s => s.SimulationSteps = 1,
+                s => s.Tiles[0].WorkProgress = float.NaN, s => s.Tiles[0].BatchRequested = true,
+                s => s.Tiles[0].Coord = new HexCoord(int.MaxValue, int.MinValue), s => s.Tiles[0].Claimed = true };
+            foreach (var corrupt in corruptions) { var state = Clone(Simulation.Create().State); corrupt(state); Throws<ArgumentException>(() => new Simulation(state), "Corrupt state accepted."); }
+        }
+        private static void Guidance()
+        {
+            var sim = Simulation.Create(); string before = Save(sim.State); var goal = SettlementGuide.Next(sim);
+            Check(goal.Detail.Contains("8 timber"), "Outdated food cost."); Equal(before, Save(sim.State), "Guide mutated state.");
         }
     }
 }

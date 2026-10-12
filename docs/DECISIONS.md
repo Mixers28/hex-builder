@@ -83,3 +83,41 @@ Source: the user asks to attach Save & Exit to the current version for players. 
 ## 2026-10-10 Public repository and Windows download
 
 Source: the user requested committing/pushing the work, explicitly chose public `Mixers28/hex-builder`, then authorized publishing the Windows ZIP as a GitHub Release. The [public prerelease v0.1.0-playtest.1](https://github.com/Mixers28/hex-builder/releases/tag/v0.1.0-playtest.1) publishes the tested Save & Exit build from commit `f42965ab405ed74458911b5ebd6328ef2718544f`, with a ZIP checksum and play instructions. Keep generated binaries as release assets and source/export tooling in Git. Prerelease notes retain the outstanding native Windows test; publishing does not establish target-platform compatibility or add game features.
+
+## 2026-10-11 Metal recovery and a more gradual opening
+
+Source: the user's playthrough found a metal shortage that prevents building a foundry. They requested low-quality smelters for manual production, clay and bricks before iron, and more layered/slower progression, informed by Manor Lords and other strategy games.
+
+| Decision | Scope | Status |
+| --- | --- | --- |
+| Introduce a primitive smelting recovery path. | Reaching first metal must not require refined metal, including resource access and research prerequisites. | User direction accepted; current failure reproduced; implementation pending. |
+| Introduce clay and bricks before iron-dependent industry. | Give the opening useful processing stages and competing labour/material investments. | User direction accepted; exact recipes and unlocks proposed in Slice 002. |
+| Prioritize this opening before the previously recommended tool workshop. | An equipment economy needs a recoverable material supply. | Planning recommendation based on the playtest. |
+| Use timber as the first fuel and retain one refined-metal resource. | Avoid adding charcoal, coal or metal-quality inventories before the small loop is tested. | Proposed implementation scope. |
+| Start a timed primitive batch manually with an assigned worker. | Preserve a visible hands-on opening and an automation payoff later. | Recommended answer; user choice still pending versus automatic repetition. |
+| Target 45–60 minutes of active play to first useful iron production. | A testable early milestone within the longer-game ambition, not a claim of weeks of content. | Recommended playtest target; user choice still pending versus 2–3 hours. |
+
+The [next slice proposal](slices/002-clay-and-first-metal.md) and [design](DESIGN.md#next-opening-clay-and-first-metal) distinguish agreed direction from unresolved mechanics. Current game rules, saves and published binaries remain unchanged. Production timings require human playtests as well as a command-driven feasibility check.
+
+## 2026-10-11 Windows publisher trust
+
+Source: the user reports an uncertified-software warning, targets UK/EU players, and confirms that the publisher is an individual developer. Target markets do not establish the publisher's legal residence. The exact warning text is still unconfirmed; do not conflate SmartScreen reputation, unknown publisher and a malware detection.
+
+The current EXE is unsigned. Investigate a public code-signing certificate that accepts individual developers for direct GitHub distribution, or Store-certified MSIX distribution. Microsoft Artifact Signing currently limits individual enrollment to US/Canada residents, so it is not the applicable route if the publisher is based in the UK/EU. Certum Standard explicitly supports individuals; it is a candidate, not a purchased or configured service. Signing verifies the publisher but does not guarantee immediate SmartScreen reputation. Sources and release steps are in [Windows builds](WINDOWS_BUILD.md#publisher-trust-and-signing).
+
+No certificate purchase, identity submission, Store account creation or signed release has been performed. Choosing a provider/distribution route and completing the publisher's identity validation precede signing integration.
+
+
+## 2026-10-11 Return to Unity and implement Clay and First Metal
+
+Source: after discussing the original Unity project and subsequent Godot request, the user said “proceed as recommended.” This accepts the recommendation to resume active development in Unity 6.3 LTS, port the current demo and saves, complete Windows updating, and build Slice 002.
+
+- Unity 6000.3.26f1 is active again; preserve the Godot release as reference. Bring forward manual crews, gradual immigration, larger plots, permanent fog discovery, the stone/tower chain, readable fullscreen controls, save/load and Save & Exit.
+- Accept a manually started, timed primitive batch with one worker. Timber is its fuel; one refined-metal counter remains. New villages start with zero metal; claims no longer cost metal.
+- Add clay and bricks, research gates, a brick kiln and primitive bloomery before the more efficient foundry. Costs and timings are in DESIGN.md. Make woodland renewal accessible before metal so fuel is a meaningful, renewable investment.
+- Accept 45–60 minutes as the first-useful-iron human playtest target. Automated feasibility is separate: first metal 18.2 simulated minutes, operating foundry 31.4. Do not describe that target or weeks of content as measured.
+- Keep existing saves through schema 4. Grandfather old industry prerequisites; complete already reserved foundry jobs without retroactive fuel charges. Add one finite clay opportunity without destroying existing development. Retain source files and backups.
+- Use a separate, self-contained Windows launcher with Velopack, the public GitHub Releases feed and explicit save-before-restart installation. Existing Godot ZIP users need one initial Unity installation. Source pushes run checks; only published, packaged releases are offered to players.
+- Signing remains separate. No identity, certificate or Store enrollment has been acquired, and the updater cannot remove Windows trust warnings.
+
+No armies, boats, animals, multiplayer or offline production were added to this slice. Verify the complete production loop and gather a human pacing/UI playtest before expanding that scope.

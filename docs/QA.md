@@ -1,41 +1,36 @@
-# QA and acceptance checks
+# Unity QA and acceptance checks
 
-This is the active Godot checklist, not a claim that every item passed. Recorded results are in [VERIFICATION.md](VERIFICATION.md). The previous [Unity checklist](UNITY_QA.md) remains available for legacy changes.
+These are checks to perform, not claims that every item passed. Actual results are in [VERIFICATION.md](VERIFICATION.md). The [old Godot checklist](GODOT_QA.md) remains available for its preserved demo.
 
-## Required local checks
-
-Use standard Godot 4.7.2; open `godot/project.godot` and allow the initial import. From the repository root:
+## Automated checks
 
 ```sh
-godot --path godot --headless --editor --import --quit
-godot --path godot --headless --script res://tests/simulation_checks.gd
-godot --path godot -- --qa
+dotnet run --project tools/SimulationChecks/SimulationChecks.csproj --configuration Release
 python3 tools/validate_repo.py
+python3 tools/unity_cli.py test
+dotnet run --project tools/WindowsLauncher/WindowsLauncher.csproj --configuration Release -- --self-test
 git diff --check
 ```
 
-Inspect logs for script errors as well as checking exit status. Rendered `--qa` uses a fresh isolated session, does not touch normal user saves, and writes actual frames to ignored `godot/qa-output/`. Core checks use temporary save paths in that directory and remove their own temporary JSON files. Optional `--legacy=<path>` arguments after `--` read older save copies and verify their hashes remain unchanged.
+The Core verifier links production sources. It covers the zero-metal route, manual crews, conservation of finite deposits and reserved inputs, carts, migration, research, discovery, invalid records and old Unity/Godot save migration. Unity EditMode tests use actual `JsonUtility`, including real disk writes, backup recovery and rejected writes. Launcher tests use real Velopack feed/download/checksum code with disposable local packages.
 
-The active automated checks cover migration/occupancy, crew caps and speed, fixed-step save continuity, reserved inputs, finite surface/deep ore, renewable timber, farm output, cargo delay/accounting and safe removal, distance-sensitive throughput, malformed saves, native backups, Unity schema migration, two complete resource-funded frontier scenarios, permanent discovery and the 817-coordinate save boundary. Focused fixtures set up edge cases directly; the frontier scenario earns materials and research using validated commands.
+## Exported players
 
-## Desktop interaction
+Build with `python3 tools/unity_cli.py build-macos` or `build-windows`. Run the actual exported executable with `--alpha-qa --qa-directory /absolute/isolated/folder --qa-fixtures /absolute/repository/Assets/AlphaHex/Tests/Fixtures -logFile /absolute/log/path`. Never use a real player's save folder as the QA directory. Add `-batchmode -nographics` only for headless checks.
 
-- Start a new test town. Use the actual mouse to choose a cottage, place it, staff a forager and inspect the empty house before its first arrival.
-- Move a worker from logging/refining to food and back. Check the available count, retained job/input state, delivery wait and crew maximum. Let a newcomer arrive with no assignment changes.
-- Pan, orbit, zoom and select at several elevations, including mined ground. Releasing a camera drag over a panel must stop the drag. Clicking UI must not accidentally pick or build behind it.
-- Check Build, Workers, Research, Menu and inspector scrolling at 1440×900, 1366×768 and 1024×768. Smaller phone layouts are not yet a target. Confirm controls, text and the dock remain inside the window, with no transparent panels intercepting world input.
-- Save during a foundry reservation and a quarry delivery. Reload and verify crew, housing, research progress, goods and discovery. Test pause and 1×/2×. Leave the application closed and confirm it does not award offline progress.
-- Choose Menu [M] → Save & Exit, reopen, and verify the same settlement resumes. In an isolated disposable user-data directory, block the temporary save write and confirm the menu action and window-close request both keep the session open, show an error and retain the previous save. Remove the obstruction and retry. Rendered `--qa` checks the new menu control but deliberately prevents normal-save writes and exit through that action.
-- Run the full path in the README without editing game state: a staffed starting economy, gradual population, surveying, discovery, stoneworking/tools, connected quarry, stone delivery, masonry and tower reinforcement. Continue to another useful frontier.
-- Exhaust a producer with final cargo travelling. Arm its removal before automatic cleanup, then check that deleting the remaining road needs a fresh confirmation. Occupied housing and the hall must resist removal.
-- Import a **copy** of a real Unity save through the file picker. Check retained known terrain, goods, occupied homes, research and cargo. Verify the selected source is unchanged and the prior Godot town is in Previous settlement.
-- On disposable saves, test corrupt-primary recovery, an unreadable primary plus unreadable backup, interrupted/rejected writes, New confirmation and the single Previous slot. Do not corrupt the user's real settlement for QA.
-- Inspect the scene/log during a sustained developed session. Note frame time and memory, particularly after repeated expansion and loading. A save-boundary test alone is not a large-town performance test.
+Rendered QA captures the village, clay/kiln, manual bloomery, exploration, research, workers and menu at several resolutions and fullscreen. It measures visible navigation bounds/button heights and checks scaled hex picking. Its presentation fixture provisions resources deliberately; use the command-only verifier for economy feasibility. Both rendered and headless checks exercise save/reload, source-preserving Godot import and successful/failed Save & Exit. JSON evidence explicitly records whether rendering was skipped.
 
-## Design playtest
+The [Windows release gate](WINDOWS_BUILD.md) tests the native executable, installer and actual update/restart in disposable paths. `ALPHA_HEX_QA_UPDATE_DIRECTORY` and `ALPHA_HEX_QA_UPDATE_VERSION` are opt-in integration-test variables inherited through that restart. They must never be set for an ordinary play session.
 
-Ask the player to establish food, reach stone, reinforce a tower, and then decide how to continue. Observe whether worker allocation creates a choice, whether travel cost is understandable, and whether another discovery seems worth the investment. Record idle time, repetitive hand gathering, reserve depletion and any sense that the game is already finished. Compare at least two seeds; cosmetic variation alone is not strategic replayability. Do not use scripted completion time as measured human playtime.
+## Human desktop playtest
 
-## Physical devices and export
+- Begin with zero metal. Keep food and timber available, build connected empty cottages and observe gradual arrivals. Assign/reassign workers and check crew limits, pending inputs and cargo before and after saving.
+- Gather clay, fire bricks, research primitive smelting, run manual bloomery batches, then earn research and construction costs for a foundry. Continue to a useful watchtower discovery. Record elapsed human time, idle waiting, manual-click burden and unclear costs.
+- Try two seeds. Observe whether terrain, route length and worker allocation create different decisions; cosmetic variation alone is not replayability.
+- Pan, orbit, zoom, pick terrain/buildings, drag across panel boundaries and use keyboard shortcuts after clicking controls. Typing an import path must not trigger game actions.
+- Inspect construction, workforce, research, inspector and menu at laptop size and fullscreen. Confirm text/button readability and scrolling. Automated bounds checks do not establish human readability.
+- Save & Exit, reopen, load Previous settlement, and import a copy of an old Godot save. Confirm the source remains unchanged and the old Unity village was archived. Test corrupt-primary recovery and failed writes only in disposable QA directories.
+- Download an update while playing, then Save, update & restart. Confirm the same village returns. Report the exact Windows warning text and displayed publisher, if any.
+- Play a developed settlement long enough to measure frame time and memory. Full-map save validation is not a performance test.
 
-Select a target device before claiming touch or iOS support. Use the Godot export pipeline and test the produced build on that hardware: tap versus drag, pinch/twist, UI scale/safe areas, scrolling, suspension/resume, local saving, sustained frame time, memory and a full play path. Synthetic gesture events, desktop OpenGL and headless simulation cannot establish those results. No exported build or physical-device pass is implied by this repository's local checks.
+The current human target is 45–60 minutes to assess the deeper opening. Automated simulated completion time is not a measured human session. This slice does not establish weeks-long content, combat, naval expansion, animals or offline progress. No mobile, touch or iOS pass is implied; physical-device checks are separate.

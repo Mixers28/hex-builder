@@ -1,67 +1,63 @@
-# Alpha Hex · First Frontier
+# Alpha Hex · Clay and First Metal
 
-A playable **Godot 4.7.2** settlement builder: welcome people gradually, assign production crews, reveal a seeded frontier, research quarry tools, and use stone to expand again.
+A Unity settlement builder about people, production and a growing hex frontier. **Unity 6.3 LTS, pinned to 6000.3.26f1**, is the active engine again. Open this repository root in Unity and play `Assets/Scenes/Starter.unity`.
 
-For friends on Windows: [download the Windows x64 playtest ZIP](https://github.com/Mixers28/hex-builder/releases/download/v0.1.0-playtest.1/alpha-hex-first-frontier-windows-x64.zip), extract it, and run `AlphaHex.exe` from the `AlphaHex` folder. Keep `AlphaHex.pck` beside it. The package includes a play guide and needs no Godot installation. See the [public prerelease](https://github.com/Mixers28/hex-builder/releases/tag/v0.1.0-playtest.1) for release notes and a checksum. Native Windows launch/performance remains to be tested on a PC; see the [Windows build and playtest notes](docs/WINDOWS_BUILD.md).
+The new opening starts with **zero metal**. Clay becomes bricks; a worker-operated bloomery makes the first metal; an efficient foundry automates refining. Citizens move into cottages gradually, workers are assigned manually, and connected watchtowers reveal new land. All world models are generated in code.
 
-Open **[godot/project.godot](godot/project.godot)** in the standard Godot editor and press **F5**. No .NET edition, external assets or package installation is needed. A [complete standalone Godot ZIP](Artifacts/alpha-hex-first-frontier-godot.zip) is also available locally. The previous Unity project is preserved at the repository root; its [historical instructions](docs/UNITY_BASELINE.md) are separate from this active game.
+The previously released Godot demo is preserved in [`godot/`](godot/README.md). [GitHub Releases](https://github.com/Mixers28/hex-builder/releases) contains published playtests; the older `v0.1.0-playtest.1` ZIP is the Godot version and has no updater. See [Windows distribution](docs/WINDOWS_BUILD.md) for the Unity installer, release procedure and signing status.
 
-## Play the slice
+## Play the opening
 
-Start with four pioneers, seven owned plots, 80 timber, 10 metal and 24 food. Only 37 hexes are visible. Select a plot to inspect it; choose **Build [B]**, a building, and the inspector's build action. **Workers [T]** and the inspector assign crews.
+1. Build a **cottage** at `(0,1)` and a **forager lodge** at `(-1,1)`. Assign two foragers. Build a woodcutter at `(-1,0)` and assign one worker. Cottages start empty; a supported newcomer arrives every 90 simulated seconds.
+2. Claim the clay bed at `(0,-2)` for **6 timber**. Road `(0,-1)` and build a clay pit. Assign the fourth worker. You can also gather clay, timber and surface ore by hand on owned land.
+3. At six citizens, research **Brick firing**. Build a kiln at `(1,-1)` and assign a worker: **4 clay + 2 timber → 2 bricks**. Consider Woodland stewardship and a tree nursery before the nearby forests run out. Place planned buildings before letting a nursery replant their plots.
+4. Add a connected cottage at `(0,2)`. At eight citizens, research **Primitive smelting** using bricks. Build a bloomery on connected clear land, assign one worker, and choose **Start batch**: **3 ore + 3 timber → 1 metal**. Each batch takes 90 seconds plus its cart trip. Hand mining supplies ore before a mine is built.
+5. Produce at least six metal: two for **Efficient refining** research at ten citizens and four for the foundry. The foundry also costs 24 timber and 16 bricks. It automatically processes **2 ore + 1 timber → 1 metal** in 18 seconds with one worker, plus delivery.
+6. Research surveying, build a connected watchtower, discover stone, then research stoneworking and quarry tools. Staff a stone quarry. Frontier masonry and 12 timber / 4 metal / 16 stone reinforce a watchtower and reveal more land.
 
-1. Build a **cottage** at `(0,1)` and a **forager lodge** at `(-1,1)`. Give the lodge one worker. Houses begin empty; a supported newcomer arrives every 90 simulated seconds and occupies a home automatically.
-2. Build a **woodcutter** at `(-1,0)`, **iron mine** at `(1,0)`, and **foundry** at `(1,-1)`. Assign one worker to each. These sites touch the village hall. Goods become spendable when their carts arrive.
-3. Add a second cottage, for example at `(0,-1)`. Allocate newcomers yourself. Keep food supplied and move crews to the materials you need. Deposits run out; preserve **6 timber and 1 metal** for another resource claim. Hand gathering on owned woodland or iron is available for recovery.
-4. At six citizens, research **Frontier surveying**. Claim `(0,2)` and build a watchtower connected through the cottage at `(0,1)`. It reveals more land, including stone at `(0,5)`; it does not claim that land.
-5. Research **Stoneworking**, then **Quarrying tools** at eight citizens. Claim `(0,3)`, `(0,4)`, and `(0,5)`; lay roads on the first two and build a **stone quarry** on the third. Assign its crew and follow its stone cart back to the hall.
-6. At ten citizens, fund **Frontier masonry** with the delivered stone. Reinforce the watchtower for **12 timber, 4 metal and 16 stone** to reveal the next frontier. Save and continue expanding. Farms, tree nurseries and deep mines offer supporting research choices.
+Crews share one cart per workplace and wait for it to return. Shorter roads and better worker allocation improve throughput. Production pauses when no crew, inputs, capacity or connection is available. Timed progress happens only while the game is running.
 
-There is no victory screen. This build provides one new resource chain and further expansion within a radius-16 limit (817 possible coordinates). A scripted, economical route reached the first reinforced tower in **15.6 simulated minutes** using hand gathering and 115 validated commands; that is not a human playtime estimate. Weeks of meaningful progression remain a content and playtesting goal, not a completed feature.
+A command-driven route reaches first metal in **18.2 simulated minutes** and a working foundry in **31.4 minutes**. This proves feasibility, not human playtime. The 45–60-minute human target needs playtesting; weeks of meaningful progression remain the longer-term ambition.
 
-The agreed [long-term direction](docs/DESIGN.md#long-term-progression-vision) adds better tools and refining, weapons and armies, barbarians and competing villages, animals for meat and leather, and eventual island exploration with boats. These are future systems; the [roadmap](docs/ROADMAP.md) proposes their slice order.
-
-## Controls
+## Controls and saves
 
 | Action | Control |
 | --- | --- |
-| Select a plot | Left click |
-| Inspect / claim / road | 1 / 2 / 3, then inspector action or Enter |
-| Build / workers / research | B / T / R |
-| Pan | WASD, arrows, or middle-button drag |
-| Orbit | Q / E or right-button drag |
-| Zoom | Wheel or trackpad pinch |
-| Home view | Home / 7 / house icon |
-| Pause / speed | Space; top-bar 1× / 2× |
-| Emergency food | F on owned grass or woodland; eight-second cooldown |
+| Select / inspect | Left click |
+| Buildings / workers / research | B / T / R |
+| Inspect / claim / road | 1 / 2 / 3 |
+| Apply selected tool | Enter or inspector button |
+| Pan / orbit / zoom | WASD or arrows / Q–E or right drag / wheel |
+| Pan by mouse | Middle drag |
+| Return to village | 7 |
+| Pause / speed | Space / top-bar speed button |
+| Emergency food | F on owned grass or forest |
 | Save / load / menu | F5 / F9 / M |
-| Save and exit | M → Save & Exit |
-| Close panel | Escape |
+| Fullscreen | F11 |
+| Close a panel | Escape |
 
-Touch tap, drag, pinch and twist handlers are present. Desktop rendering and synthesized gestures were checked; physical touch devices and iOS exports were not tested. The current UI targets landscape desktop windows at least 1024×700. It scales from a 1440×900 reference layout, keeping text and buttons readable in Retina fullscreen while the 3D world renders at the window's native resolution. Restart an already-running game to pick up display configuration changes.
+Use **Menu → Save & Exit**. If the save fails, the game stays open. Normal window closure also saves when automatic saving is enabled. Automatic saves run every 30 seconds. A backup and one previous-settlement slot protect recovery and explicit replacements.
 
-## Saves
+Unity saves live under the existing `Project Alpha / Alpha Hex Builder` persistent-data directory, outside the installation. **Menu → Import Godot save** reads the former `AlphaHexFrontier/frontier.json` file, including its backup fallback. You can edit the import path. Import archives the current village and leaves the original source untouched. Unity schemas 1/2 and Godot schema 3 migrate to Unity schema 4.
 
-Choose **Menu [M] → Save & Exit** to save the current settlement and close the game. The next launch resumes that save. If saving fails, the error is shown and the game stays open so you can retry. Normal window closure also waits for a successful save when autosaving is enabled.
+On installed Windows builds, **Menu → Check for updates** checks published GitHub Releases. Download while playing, then choose **Save, update & restart**. A one-time Unity installation is needed for friends using the older Godot ZIP. The updater does not sign the game or remove Windows reputation warnings.
 
-Time advances only during play. Autosave runs every 30 seconds. Native saves use Godot's user-data directory `AlphaHexFrontier`: `frontier.json`, its `.bak` fallback, and one `previous.json` settlement archive. On macOS this is `~/Library/Application Support/AlphaHexFrontier/`.
+## Development and verification
 
-**Menu → Begin a new settlement** asks for confirmation and archives the current village before replacing it. **Import Unity save…** accepts the older `alpha-hex-save.json` schema 1/2 files, preserves their known world, town, resources, job progress and travelling cargo, and leaves the selected source file unchanged. Import also archives the current Godot village. Old unspent research points remain usable for their original technologies. Invalid saves cannot partially replace the active town; an unreadable startup save pauses autosave until an explicit successful save or replacement.
-
-## Verification and development
-
-Use the executable for **Godot 4.7.2** (`godot` below) from the repository root:
+- [`docs/DESIGN.md`](docs/DESIGN.md): current rules, balance and future boundaries.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Core, runtime, persistence and update protocol.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md): engine choice and design decisions.
+- [`docs/VERIFICATION.md`](docs/VERIFICATION.md): actual automated and platform evidence.
+- [`docs/slices/002-clay-and-first-metal.md`](docs/slices/002-clay-and-first-metal.md): accepted scope and playtest questions.
 
 ```sh
-godot --path godot --headless --editor --import --quit
-godot --path godot --headless --script res://tests/simulation_checks.gd
-godot --path godot -- --qa
-godot --path godot -- --qa --qa-display
+dotnet run --project tools/SimulationChecks/SimulationChecks.csproj --configuration Release
 python3 tools/validate_repo.py
+python3 tools/unity_cli.py test
+python3 tools/unity_cli.py build-macos
+python3 tools/unity_cli.py build-windows
 ```
 
-The rendered commands open a separate game window and write screenshots to ignored `godot/qa-output/`. `--qa` exercises UI/input and the frontier scenario. Adding `--qa-display` instead tests native fullscreen, Retina button dimensions, window resizing and scaled pointer interactions, then exits. Neither loads or overwrites the normal settlement save. The engine's exit code and log must both be checked for script errors.
+The console verifier uses .NET 10 and links the actual Core source; Core itself remains C# 9 / .NET Standard 2.1. Unity tests cover real `JsonUtility`. Windows builds need the pinned editor's Windows Mono support module. The [distribution guide](docs/WINDOWS_BUILD.md) explains packaging and releases.
 
-Rules live in `godot/core`; scene, meshes, input and UI live in `godot/runtime`. Tests preload those actual rules. Keep `.uid` files, exclude `.godot` and private saves. The existing C# verifier and Unity CI belong to the preserved baseline; they do not verify the Godot game.
-
-See [design and balance](docs/DESIGN.md), [architecture](docs/ARCHITECTURE.md), [slice and acceptance record](docs/slices/001-first-frontier.md), [verification](docs/VERIFICATION.md), and [decisions](docs/DECISIONS.md). No combat, multiplayer, arbitrary tunnels, tool durability, audio, offline production or additional resource tiers were added.
+This is a bounded single-player slice: no armies, competing villages, boats, animals, multiplayer, arbitrary tunnels or offline production yet. Terrain supports layered hex columns and staged quarry excavation. The [roadmap](docs/ROADMAP.md) separates the planned larger game from implemented features.

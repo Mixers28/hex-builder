@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+from release_common import source_hashes, write_json
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -94,6 +95,11 @@ def main():
     result = subprocess.run(command, cwd=ROOT)
     if result.returncode:
         print("Unity returned", result.returncode, "— inspect the log above.", file=sys.stderr)
+    elif args.command == "build-windows":
+        write_json(ROOT / "Builds/Windows/alphahex-player.json", {
+            "engine": project_version(), "version": (ROOT / "VERSION").read_text().strip(),
+            "sources": source_hashes(),
+        })
     return result.returncode
 
 

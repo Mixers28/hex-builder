@@ -1,5 +1,34 @@
 # Verification record
 
+## Unity clay/brick opening and update packaging — 2026-10-12
+
+Active engine: Unity **6000.3.26f1**. Tested locally on the Apple M1 Pro Mac with .NET SDK **10.0.401**. Godot remains a preserved compatibility reference; the previous public release is unchanged until the new release gate passes.
+
+| Check | Actual result |
+| --- | --- |
+| Production Core verifier | **21 grouped checks passed**. Includes two command-only, zero-metal openings (seeds 417 and 418), each reaching first metal at **18.2 simulated minutes** and a producing foundry at **31.4 minutes**. No free resource grants in these routes. Mid-batch saves, input/cargo conservation, crews, research, finite deposits, discovery and invalid records also pass. |
+| Real Unity EditMode serialization | **13 passed, 0 failed/skipped**. Native `JsonUtility`, schema-1/2 and Godot-3 fixtures, root-field/number validation, in-progress saves, backup recovery, rejected writes and correct macOS legacy-save location. |
+| Editor compilation and player exports | Both **Mac and Windows x64 Mono exports succeeded**. Windows support was installed through Unity Hub. Logs show a licensing token-refresh warning, followed by successful licensed builds; no game script compile failures were found. |
+| Actual exported Mac player | **Passed**, rendered with no captured runtime errors. Ten frames cover the new buildings, frontier, research, workers, menu, resizing and fullscreen. Save/reload, unmodified-source Godot import, failed-save protection and successful Save & Exit also pass in an isolated QA directory. |
+| Mac UI sizes | Actual windows **1280×800, 1600×900, 1920×1080, 2560×1600**, plus **2560×1600 fullscreen**. Minimum measured menu button heights: **46.38, 66.00 and 92.76 pixels** at the three menu window sizes; **92.76 pixels fullscreen**. Worker controls measure **84.33 pixels** at 2560×1600. Fixed controls remain on screen and scaled hex picking agrees with the world. Screenshots were visually inspected. |
+| Update library/protocol checks | Passed actual Velopack local-feed selection/download, downloaded-byte equality, bad-checksum rejection, pending-restart detection, downgrade prevention, request validation and Windows argument quoting. |
+| Installer packaging | Local cross-packaging produced the Windows setup, portable ZIP, full update package and channel feed using pinned Velopack **1.2.161**. Native installer/replacement checks run separately in the release workflow and are recorded below when available. |
+| Repository | Asset metadata/Core-boundary validator, Python syntax and whitespace checks passed. **112** local documentation links resolved before adding this record. |
+
+Evidence is under ignored `Artifacts/unity-return/mac-player-final/` ([measurements](../Artifacts/unity-return/mac-player-final/player-result.json), [fullscreen](../Artifacts/unity-return/mac-player-final/fullscreen.png), [bloomery](../Artifacts/unity-return/mac-player-final/manual-bloomery.png), [clay and kiln](../Artifacts/unity-return/mac-player-final/clay-and-kiln.png)). Unity evidence: [EditMode XML](../Artifacts/editmode-results.xml), [Mac build](../Artifacts/build-macos.log), [Windows build](../Artifacts/build-windows.log). The presentation fixture deliberately provisions resources; it is separate from the command-only economy checks. No personal save was used.
+
+At this point, native Windows installation/update execution, Windows rendering/performance and a complete human playthrough are **not yet established**. The 45–60-minute human pacing target and weeks-long design ambition are not measured outcomes. No signing identity or signed installer has been produced. The release workflow keeps assets in a draft until native checks can be reviewed.
+
+## Metal recovery diagnosis — 2026-10-11
+
+The user reports a metal soft-lock during a playthrough. Reproduced with Godot 4.7.2 against the actual current simulation, starting a fresh in-memory village and using only validated commands: claim ten available adjacent plots, hand-gather twice from starting iron at `(1,0)`, then attempt the foundry on `(0,1)` and mine on `(1,0)`.
+
+Result: **20 timber, 2 ore, 0 metal, 24 food, 0 stone**. All ten claims and both gathers succeed. Foundry construction fails with `Need 20 timber · 4 metal.`; the mine fails with `Need 16 timber · 2 metal.` The resulting record passes `Simulation.validate`. No foundry exists and the implementation provides no alternative metal conversion, confirming the circular dependency rather than a malformed-save issue. The probe exits 0 because reproducing the bug is its expected result; this is not a fix passing verification.
+
+Local evidence: [probe](../Artifacts/playtest-2026-10-11/metal_recovery_probe.gd) and [engine log](../Artifacts/playtest-2026-10-11/metal-recovery.log), retained under ignored Artifacts. No player save was loaded or written. The [next slice proposal](slices/002-clay-and-first-metal.md) records the proposed remedy and its pending controls/pacing choices. No production code, save schema or build artifact changed during this diagnosis and planning; the full runtime suite was not repeated.
+
+The same user reports an uncertified-software warning on Windows. Inspection confirms that the export preset disables signing. Exact warning text, Windows environment and an observed native test are still outstanding. Research into signing is documented in [Windows builds](WINDOWS_BUILD.md#publisher-trust-and-signing); no signed artifact has been produced.
+
 ## Public Windows prerelease — 2026-10-10
 
 Published [v0.1.0-playtest.1](https://github.com/Mixers28/hex-builder/releases/tag/v0.1.0-playtest.1) in public `Mixers28/hex-builder`, targeting the tested game commit `f42965ab405ed74458911b5ebd6328ef2718544f`. Verified the release is published (`draft=false`) and marked as a prerelease. Its two uploaded assets are the Windows ZIP and an external SHA-256 checksum file.

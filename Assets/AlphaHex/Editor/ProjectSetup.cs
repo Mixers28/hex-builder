@@ -78,7 +78,10 @@ namespace AlphaHex.Editor
 
             PlayerSettings.companyName = "Project Alpha";
             PlayerSettings.productName = "Alpha Hex Builder";
-            PlayerSettings.bundleVersion = "0.1.0";
+            PlayerSettings.bundleVersion = File.ReadAllText("VERSION").Trim();
+            PlayerSettings.resizableWindow = true;
+            PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
+            PlayerSettings.macRetinaSupport = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
             PlayerSettings.allowedAutorotateToLandscapeLeft = true;
@@ -170,7 +173,7 @@ namespace AlphaHex.Editor
         public static void BuildMac() => Build(BuildTarget.StandaloneOSX, "Builds/macOS/AlphaHexBuilder.app");
 
         [MenuItem("Alpha Hex/Build/Windows")]
-        public static void BuildWindows() => Build(BuildTarget.StandaloneWindows64, "Builds/Windows/AlphaHexBuilder.exe");
+        public static void BuildWindows() => Build(BuildTarget.StandaloneWindows64, "Builds/Windows/AlphaHexGame.exe");
 
         [MenuItem("Alpha Hex/Build/iOS Xcode project")]
         public static void BuildIOS() => Build(BuildTarget.iOS, "Builds/iOS");
@@ -186,7 +189,7 @@ namespace AlphaHex.Editor
                 scenes = new[] { StarterScene },
                 locationPathName = output,
                 target = target,
-                options = BuildOptions.Development
+                options = BuildOptions.None
             });
             if (report.summary.result != BuildResult.Succeeded)
                 throw new BuildFailedException("Build failed: " + report.summary.result);

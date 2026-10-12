@@ -1,0 +1,51 @@
+name: Windows playtest release
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Draft release tag matching VERSION (v0.2.0-playtest.1)
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: windows-playtest-release
+  cancel-in-progress: false
+jobs:
+  native-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate repository and game rules
+        run: |
+          python tools/validate_repo.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project tools/SimulationChecks/SimulationChecks.csproj --configuration Release
+      - name: Verify update downloads and protocol
+        run: dotnet run --project tools/WindowsLauncher/WindowsLauncher.csproj --configuration Release -- --self-test
+      - name: Test Windows player, installer and update restart; attach to draft
+        run: python tools/windows_release_check.py --tag $env:RELEASE_TAG
+      - name: Retain test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-evidence
+          path: |
+            Artifacts/native-windows/**/*.log
+            Artifacts/native-windows/**/*result.json
+            Artifacts/native-windows/**/*request.json
+            Artifacts/native-windows/**/*status.json
+            Artifacts/native-windows/verification.json
+          if-no-files-found: warn

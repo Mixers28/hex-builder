@@ -21,3 +21,12 @@ jobs:
         run: python tools/validate_repo.py
       - name: Run simulation checks
         run: dotnet run --project tools/SimulationChecks/SimulationChecks.csproj --configuration Release
+  updater:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify real package downloads and update protocol
+        run: dotnet run --project tools/WindowsLauncher/WindowsLauncher.csproj --configuration Release -- --self-test

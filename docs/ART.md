@@ -1,4 +1,4 @@
-> Active Godot presentation is original code-generated geometry in `godot/runtime/world_art.gd`: larger plots, rustic buildings, trees, workers and carts. It uses none of the PNG illustrations below. These retained prompts and assets document the Unity baseline.
+> Active Unity world presentation is code-generated geometry in `WorldArt`, `TownArt` and `FrontierArt`, including larger hex plots, fog, clay workings, kilns and bloomeries. The current construction UI uses text cards; the retained PNG illustrations below are historical assets and are not currently displayed.
 
 # Original Town Art
 
@@ -8,11 +8,11 @@ The house, farm and forester illustrations were generated with the built-in imag
 
 | Asset | Source PNG | Runtime use |
 | --- | --- | --- |
-| House | `Assets/AlphaHex/Resources/TownArt/house.png` | House construction card |
-| Farm | `Assets/AlphaHex/Resources/TownArt/farm.png` | Farm construction card |
-| Forester | `Assets/AlphaHex/Resources/TownArt/forester.png` | Forester construction card |
+| House | `Assets/AlphaHex/Resources/TownArt/house.png` | Retained; not currently displayed |
+| Farm | `Assets/AlphaHex/Resources/TownArt/farm.png` | Retained; not currently displayed |
+| Forester | `Assets/AlphaHex/Resources/TownArt/forester.png` | Retained; not currently displayed |
 
-Originals are 1254 × 1254 RGBA. Unity imports them at a maximum of 256 pixels, with alpha transparency and no mipmaps. `TownHud` loads them as shared textures. Preserve their `.meta` GUIDs when updating the artwork. No generated art is loaded from a developer's home directory at runtime.
+Originals are 1254 × 1254 RGBA. Unity imports them at a maximum of 256 pixels, with alpha transparency and no mipmaps. The previous `TownHud` loaded them as shared textures. Preserve their `.meta` GUIDs when updating the artwork. No generated art is loaded from a developer's home directory at runtime.
 
 World terrain, buildings, trees, citizens and vehicles remain code-generated meshes/primitives in `WorldArt` and `TownArt`. The cottages use timber framing and pitched roofs; farms use planted rows; foresters use seedling beds. The in-world models are simpler than the illustrations.
 

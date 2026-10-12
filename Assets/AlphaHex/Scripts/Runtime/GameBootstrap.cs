@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 
 namespace AlphaHex.Runtime
 {
-    public enum WorldTool { Inspect, Claim, Road, Forestry, Mine, Smelter, Home, House, Forager, Farm, Forester, DeepMine }
+    public enum WorldTool { Inspect, Claim, Road, Forestry, Mine, Smelter, Home, House, Forager, Farm, Forester, DeepMine, Watchtower, Quarry, ClayPit, Kiln, Bloomery }
 
     [DefaultExecutionOrder(-100)]
     public sealed class GameBootstrap : MonoBehaviour
@@ -22,6 +22,9 @@ namespace AlphaHex.Runtime
         public string Notice { get; private set; } = "Select a tile to inspect your settlement.";
         public uint NoticeRevision { get; private set; }
 
+        public bool ExitRequested { get; private set; }
+        public WindowsUpdates Updates { get; private set; }
+        private bool quitApproved;
         private HexWorldView world;
         private OrbitCamera orbit;
         private Camera gameCamera;
@@ -37,6 +40,8 @@ namespace AlphaHex.Runtime
 
         private void Awake()
         {
+            Application.wantsToQuit += WantsToQuit;
+            if (RuntimeOptions.IsQa) { loadSavedWorld = false; nextAutosave = float.PositiveInfinity; }
             Application.targetFrameRate = 60;
             Screen.sleepTimeout = SleepTimeout.SystemSetting;
             Simulation = AlphaHex.Core.Simulation.Create(startingSeed);
@@ -45,13 +50,17 @@ namespace AlphaHex.Runtime
                 Simulation = restored;
                 Notice = loadMessage;
             }
-            else if (loadSavedWorld && System.IO.File.Exists(SaveService.SavePath))
+            else if (loadSavedWorld && (System.IO.File.Exists(SaveService.SavePath) || System.IO.File.Exists(SaveService.SavePath + ".bak")))
             {
                 Notice = "The save could not be read. A fresh island is open; the old file is still on disk.";
                 // Do not overwrite an unreadable save through automatic saving this session.
                 nextAutosave = float.PositiveInfinity;
             }
 
+            if (!RuntimeOptions.IsQa && System.IO.File.Exists(SaveService.GodotPath))
+                Notice += " A Godot settlement is available under Menu > Import Godot save.";
+            Updates = gameObject.AddComponent<WindowsUpdates>();
+            Updates.Initialize(this);
             CreateLighting();
             world = new GameObject("Hex World").AddComponent<HexWorldView>();
             world.Initialize(Simulation);
@@ -63,7 +72,7 @@ namespace AlphaHex.Runtime
                 gameCamera = cameraObject.AddComponent<Camera>();
             }
             gameCamera.clearFlags = CameraClearFlags.SolidColor;
-            gameCamera.backgroundColor = new Color(0.66f, 0.76f, 0.79f);
+            gameCamera.backgroundColor = new Color(0.78f, 0.835f, 0.808f);
             gameCamera.fieldOfView = 42;
             gameCamera.nearClipPlane = 0.1f;
             gameCamera.farClipPlane = 180;
@@ -200,6 +209,8 @@ namespace AlphaHex.Runtime
 
         private void ReadShortcuts()
         {
+            if (EventSystem.current?.currentSelectedGameObject?.GetComponent<UnityEngine.UI.InputField>()?.isFocused == true) return;
+            if (Input.GetKeyDown(KeyCode.F11)) Screen.fullScreen = !Screen.fullScreen;
             if (Input.GetKeyDown(KeyCode.F5)) SaveGame();
             if (Input.GetKeyDown(KeyCode.F9)) LoadGame();
             if (Input.GetKeyDown(KeyCode.Space)) TogglePause();
@@ -211,9 +222,8 @@ namespace AlphaHex.Runtime
             if (Input.GetKeyDown(KeyCode.Escape)) { hud.CloseMenu(); hud.CloseTown(); SetTool(WorldTool.Inspect); }
             if (hud.ResearchVisible)
             {
-                if (Input.GetKeyDown(KeyCode.Alpha1)) Research(ResearchKind.Farming);
-                if (Input.GetKeyDown(KeyCode.Alpha2)) Research(ResearchKind.Reforestation);
-                if (Input.GetKeyDown(KeyCode.Alpha3)) Research(ResearchKind.DeepMining);
+                for (int i = 0; i < Math.Min(9, AlphaHex.Core.Simulation.ResearchTopics.Length); i++)
+                    if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + i))) Research(AlphaHex.Core.Simulation.ResearchTopics[i]);
                 return;
             }
             for (int i = 0; i <= (int)WorldTool.Home; i++)
@@ -221,7 +231,7 @@ namespace AlphaHex.Runtime
             if (Input.GetKeyDown(KeyCode.Alpha8)) SetTool(WorldTool.House);
             if (Input.GetKeyDown(KeyCode.Alpha9)) SetTool(WorldTool.Forager);
             if (Input.GetKeyDown(KeyCode.Alpha0)) SetTool(WorldTool.Farm);
-            if (Input.GetKeyDown(KeyCode.B)) SetTool(WorldTool.Forester);
+            if (Input.GetKeyDown(KeyCode.B)) hud.ToggleBuild();
             if (Input.GetKeyDown(KeyCode.N)) SetTool(WorldTool.DeepMine);
             if (Input.GetKeyDown(KeyCode.Return)) ApplyTool();
             if (Input.GetKeyDown(KeyCode.F)) ForageSelected();
@@ -267,6 +277,11 @@ namespace AlphaHex.Runtime
                 case WorldTool.Farm: Simulation.TryBuild(coord, BuildingKind.Farm, out message); break;
                 case WorldTool.Forester: Simulation.TryBuild(coord, BuildingKind.Forester, out message); break;
                 case WorldTool.DeepMine: Simulation.TryBuild(coord, BuildingKind.DeepMine, out message); break;
+                case WorldTool.Watchtower: Simulation.TryBuild(coord, BuildingKind.Watchtower, out message); break;
+                case WorldTool.Quarry: Simulation.TryBuild(coord, BuildingKind.Quarry, out message); break;
+                case WorldTool.ClayPit: Simulation.TryBuild(coord, BuildingKind.ClayPit, out message); break;
+                case WorldTool.Kiln: Simulation.TryBuild(coord, BuildingKind.Kiln, out message); break;
+                case WorldTool.Bloomery: Simulation.TryBuild(coord, BuildingKind.Bloomery, out message); break;
                 default: message = "Choose a build or expansion tool below."; break;
             }
             SetNotice(message);
@@ -278,6 +293,7 @@ namespace AlphaHex.Runtime
             TileState tile = Simulation.GetTile(Selected.Value);
             string message;
             if (tile != null && tile.TreesRemaining > 0) Simulation.TryHarvest(tile.Coord, out message);
+            else if (tile != null && tile.ClayRemaining > 0) Simulation.TryGatherClay(tile.Coord, out message);
             else Simulation.TryExcavate(Selected.Value, out message);
             SetNotice(message);
         }
@@ -312,11 +328,51 @@ namespace AlphaHex.Runtime
         public void TogglePause() { Paused = !Paused; Refresh(); }
         public void CycleSpeed() { Speed = Speed == 1 ? 2 : 1; Refresh(); }
 
-        public void SaveGame()
+        public bool SaveGame()
         {
-            if (SaveService.TrySave(Simulation.State, out string message))
-                nextAutosave = Time.unscaledTime + 30;
-            SetNotice(message);
+            bool saved = SaveService.TrySave(Simulation.State, out string message);
+            if (saved && !RuntimeOptions.IsQa) nextAutosave = Time.unscaledTime + 30;
+            SetNotice(message); return saved;
+        }
+        public bool SaveAndExit()
+        {
+            if (!SaveGame()) return false;
+            ExitRequested = quitApproved = true;
+            if (!RuntimeOptions.IsQa)
+            {
+#if UNITY_EDITOR
+                UnityEditor.EditorApplication.isPlaying = false;
+#else
+                Application.Quit();
+#endif
+            }
+            return true;
+        }
+        private bool WantsToQuit()
+        {
+            if (quitApproved || RuntimeOptions.IsQa || Simulation == null || float.IsPositiveInfinity(nextAutosave)) return true;
+            return SaveGame();
+        }
+        public void AssignSelected(int delta)
+        {
+            if (!Selected.HasValue) return;
+            AssignAt(Selected.Value, delta);
+        }
+        public void AssignAt(HexCoord coord, int delta)
+        { Simulation.TryAssignWorkers(coord, Simulation.GetWorkersAssigned(coord) + delta, out string message); SetNotice(message); }
+        public void StartSelectedBatch()
+        {
+            if (Selected.HasValue) { Simulation.TryStartBatch(Selected.Value, out string message); SetNotice(message); }
+        }
+        public void UpgradeSelectedTower()
+        {
+            if (Selected.HasValue) { Simulation.TryUpgradeTower(Selected.Value, out string message); SetNotice(message); }
+        }
+        public void ImportSave(string path)
+        {
+            if (!SaveService.TryLoadAt(path.Trim(), out Simulation imported, out string message)) { SetNotice(message); return; }
+            if (!SaveService.TryArchive(Simulation.State, out message) || !SaveService.TrySave(imported.State, out message)) { SetNotice(message); return; }
+            ReplaceWorld(imported); SetNotice("Settlement imported. The source file was retained; your previous village is archived.");
         }
 
         public void LoadGame()
@@ -367,13 +423,13 @@ namespace AlphaHex.Runtime
             orbit.Initialize(Vector3.zero, world.Radius);
             Tool = WorldTool.Inspect;
             Paused = false;
-            nextAutosave = Time.unscaledTime + 30;
+            nextAutosave = RuntimeOptions.IsQa ? float.PositiveInfinity : Time.unscaledTime + 30;
             hud.HideInspector();
             hud.CloseTown();
             Select(new HexCoord(0, 0), false);
         }
 
-        private void SetNotice(string message)
+        public void SetNotice(string message)
         {
             Notice = message;
             unchecked { NoticeRevision++; }
@@ -393,6 +449,7 @@ namespace AlphaHex.Runtime
         {
             if (world == null) return;
             world.Refresh();
+            if (orbit != null) orbit.SetBounds(world.Radius);
             if (preview != null)
             {
                 bool show = Selected.HasValue && (Tool >= WorldTool.Forestry && Tool <= WorldTool.Smelter || Tool >= WorldTool.House);
@@ -410,13 +467,9 @@ namespace AlphaHex.Runtime
                 SaveService.TrySave(Simulation.State, out _);
         }
 
-        private void OnApplicationQuit()
-        {
-            if (Simulation != null && !float.IsPositiveInfinity(nextAutosave)) SaveService.TrySave(Simulation.State, out _);
-        }
-
         private void OnDestroy()
         {
+            Application.wantsToQuit -= WantsToQuit;
             if (preview != null) Destroy(preview);
             if (previewMaterial != null) Destroy(previewMaterial);
         }

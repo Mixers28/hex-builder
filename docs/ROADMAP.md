@@ -4,13 +4,17 @@ The target is a replayable settlement that develops incrementally across weeks t
 
 The sequence below is a recommendation, not an approved specification for all future slices. Agree the material mechanics when selecting each slice, then build one complete playable payoff. Technical checks, human playtests and save continuity remain part of every delivery.
 
-## 1. Playtest First Frontier in Godot
+## 1. Carry First Frontier into Unity
 
-Implemented: manual production crews, gradual automatic housing occupancy, larger plots and more detailed procedural buildings, a compact HUD, permanent fog discovery, generated frontier regions, stone/tool/masonry research, staffed quarries, reinforced watchtowers, native saves and Unity import. Supporting food, farming, woodland renewal and deep iron are retained.
+Implemented in the active Unity project: manual crews, gradual occupancy, larger plots, permanent discovery, research, stone extraction and watchtower reinforcement. The released Godot demo remains a compatibility reference. Verify save migration and the actual player builds; see [verification](VERIFICATION.md).
 
-**Gate:** the player reaches the first reinforcement, understands a labour/logistics bottleneck, and wants to choose a further expansion. [The slice record](slices/001-first-frontier.md) separates technical evidence from this pending human playtest. The scripted fastest known path is still about sixteen simulated minutes; longer migration and extra research alone do not solve the long-term content problem.
+## 2. Playtest Clay and First Metal
 
-## 2. Recommended next slice: make and use better tools
+Implemented: metal-free claims/start, clay and bricks, a brick kiln, manual bloomery batches and more efficient automatic refining. The user accepted a 45–60-minute human first-iron target. A scripted route reaches first metal at 18.2 minutes and a working foundry at 31.4; human duration and enjoyment are unmeasured. Test useful decisions, idle waits, resource recovery and fullscreen readability before choosing the next chain.
+
+The Windows update feature uses versioned GitHub Releases. It does not replace signing or human Windows testing. [Slice 002](slices/002-clay-and-first-metal.md) records this scope.
+
+## 3. Make and use better tools
 
 Proposed scope: one researched tool tier, one staffed workshop using existing timber and refined metal, and an explicit way to put those tools into use at a production building. Show the cost and resulting efficiency in the inspector. Keep worker availability, finite deposits and delivery distance relevant. This is the first test of equipment as a manufactured good; individual villager inventories and durability are not required to test it.
 
@@ -18,25 +22,25 @@ Settle equipment quantities, workplace assignment and the exact benefit during s
 
 **Gate:** the player can decide which workplace deserves the first equipment investment, explain its benefit, and see that choice survive a save/load without duplicated tools or goods.
 
-## 3. Animals and useful materials
+## 4. Animals and useful materials
 
 Introduce one animal source and a small acquisition/processing chain producing meat and leather. Decide whether the first implementation uses hunting or husbandry and give leather one useful equipment application before extending the animal roster. Meat should have a clear relationship to the existing food economy; its accounting and food value need explicit design.
 
 **Gate:** animals change a food or equipment decision, and the player can follow their products from source to consumption. Species, replenishment and processing recipes remain proposed until scoped.
 
-## 4. First armed defense
+## 5. First armed defense
 
 Connect one weapon research and production chain to recruitment and equipment of a small defending force. Introduce one roving barbarian threat and a comprehensible defense outcome. Decide army control, warnings, recruitment's effect on the civilian workforce, casualties and recovery before implementation. Prefer a bounded first encounter that tests these choices before adding multiple troop types or repeated attack schedules.
 
 **Gate:** preparation has a visible economic cost, equipment affects the outcome, and the player understands how to protect a useful part of the settlement and recover from setbacks.
 
-## 5. A competing village
+## 6. A competing village
 
 Add one persistent computer-controlled settlement competing for finite frontier resources. Settle how it expands, claims resources and interacts with player territory. Give it understandable behavior and actual resource consequences. Diplomacy, trading and additional opponents are separate design choices.
 
 **Gate:** the rival changes an expansion or defense decision and remains consistent across saved sessions. Competition must remain playable without exhausting every recovery route.
 
-## 6. Discover the island and make the first crossing
+## 7. Discover the island and make the first crossing
 
 Let exploration reveal a coherent coastline and the island's limits. Connect boat research and construction to reaching one further island with a resource opportunity the player can use. Choose the first boat's role, transport rules and the equipment required to gather that resource. Deliver a complete return path from overseas discovery into the settlement economy.
 
@@ -44,7 +48,7 @@ This requires a deliberate world-generation and persistence extension: the curre
 
 **Gate:** the player builds a boat, crosses to new land, obtains a useful resource through the intended logistics, and saves/resumes with vessels, cargo and discoveries intact.
 
-## 7. Further refining, equipment and boat tiers
+## 8. Further refining, equipment and boat tiers
 
 Build on those complete loops with better refinement methods, equipment and boats. Add one linked resource → processing → equipment → new opportunity chain at a time. Each tier should change capability, production planning, defense or reach. Different regional resources and competing investments are candidate ways to make new settlements replay differently; they still need playtesting.
 

@@ -6,7 +6,7 @@
 /[Bb]uilds/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
-/Artifacts/
+**/Artifacts/
 /MemoryCaptures/
 /Recordings/
 /Assets/AssetStoreTools*

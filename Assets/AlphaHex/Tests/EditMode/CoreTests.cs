@@ -1,6 +1,9 @@
 using System;
+using System.IO;
 using System.Linq;
 using AlphaHex.Core;
+using AlphaHex.Runtime;
+using AlphaHex.Updates;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -8,192 +11,101 @@ namespace AlphaHex.Tests
 {
     public sealed class CoreTests
     {
-        private static readonly HexCoord Mine = new HexCoord(1, 0);
-        private static readonly HexCoord Smelter = new HexCoord(0, 1);
-
-        [Test]
-        public void JsonUtilityPreservesAnActiveDeliveryAndThePartialClock()
+        private static readonly HexCoord Mine = new HexCoord(1, 0), Processor = new HexCoord(1, -1);
+        private static Simulation Ready()
         {
-            Simulation original = Simulation.Create();
-            Assert.That(original.TryBuild(Mine, BuildingKind.Mine, out _), Is.True);
-            original.Tick(5.31f);
-            Assert.That(original.State.Shipments.Count, Is.EqualTo(1));
-            Assert.That(original.State.PendingSeconds, Is.GreaterThan(0));
-
-            WorldState payload = JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(original.State));
-            Simulation loaded = new Simulation(payload);
-            original.Tick(10.17f);
-            loaded.Tick(10.17f);
-
+            var state = Simulation.Create().State; state.Stock = new ResourceStock(1000, 100, 100, 1000, 100, 100, 100); state.Town.Research = (ResearchKind)1023;
+            return new Simulation(state);
+        }
+        private static Simulation Reload(Simulation sim) => SaveService.Decode(JsonUtility.ToJson(sim.State));
+        private static void Build(Simulation sim, HexCoord coord, BuildingKind building)
+        {
+            Assert.That(sim.TryBuild(coord, building, out string why), Is.True, why);
+            Assert.That(sim.TryAssignWorkers(coord, 1, out why), Is.True, why);
+        }
+        [Test] public void NativeJsonPreservesCargoJobFuelAndClock()
+        {
+            var original = Ready(); Build(original, Mine, BuildingKind.Mine); Build(original, Processor, BuildingKind.Kiln); original.Tick(15.3125f);
+            Assert.That(original.State.Shipments.Count, Is.EqualTo(1)); Assert.That(original.GetTile(Processor).InputClayReserved, Is.EqualTo(4));
+            var loaded = Reload(original); original.Tick(200.1875f); loaded.Tick(200.1875f);
             Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(JsonUtility.ToJson(original.State)));
-            Assert.That(loaded.State.Stock.Ore, Is.GreaterThan(0));
         }
-
-        [Test]
-        public void JsonUtilityPreservesReservedSmelterInput()
+        [Test] public void ManualBatchRemainsExplicitAfterRoundTrip()
         {
-            Simulation original = Simulation.Create();
-            Assert.That(original.TryExcavate(Mine, out _) && original.TryExcavate(Mine, out _), Is.True);
-            Assert.That(original.TryBuild(Smelter, BuildingKind.Smelter, out _), Is.True);
-            original.Tick(2.375f);
-            Assert.That(original.GetTile(Smelter).InputOreReserved, Is.EqualTo(2));
-
-            Simulation loaded = new Simulation(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(original.State)));
-            loaded.Tick(4.375f);
-            Assert.That(loaded.State.Stock.Ore, Is.Zero);
-            Assert.That(loaded.State.Stock.Metal, Is.EqualTo(7));
-            Assert.That(loaded.GetTile(Smelter).InputOreReserved, Is.Zero);
+            var sim = Ready(); Build(sim, Processor, BuildingKind.Bloomery); Assert.That(sim.TryStartBatch(Processor, out _), Is.True); sim.Tick(40.3125f);
+            var loaded = Reload(sim); Assert.That(loaded.GetTile(Processor).BatchRequested, Is.True);
+            loaded.Tick(160); Assert.That(loaded.State.Stock.Metal, Is.EqualTo(101)); Assert.That(loaded.GetTile(Processor).BatchRequested, Is.False);
+            loaded.Tick(100); Assert.That(loaded.State.Stock.Metal, Is.EqualTo(101));
         }
-
-        [Test]
-        public void ADisconnectedMineWaitsForAnActualRoad()
+        [TestCase("unity-v1")][TestCase("unity-v2")][TestCase("godot-v3")][TestCase("godot-frontier-v3")]
+        public void ReleasedSaveFixturesMigrateAndResume(string fixture)
         {
-            Simulation sim = Simulation.Create();
-            HexCoord source = new HexCoord(2, 0);
-            Assert.That(sim.TryClaim(source, out _), Is.True);
-            Assert.That(sim.TryBuild(source, BuildingKind.Mine, out _), Is.True);
-            sim.Tick(30);
-            Assert.That(sim.GetTile(source).OreRemaining, Is.EqualTo(48));
-            Assert.That(sim.State.Stock.Ore, Is.Zero);
-
-            Assert.That(sim.TryBuildRoad(Mine, out _), Is.True);
-            sim.Tick(5);
-            Assert.That(sim.State.Stock.Ore, Is.Zero);
-            Assert.That(sim.State.Shipments.Single().Amount, Is.EqualTo(2));
-            sim.Tick(1.5f);
-            Assert.That(sim.State.Stock.Ore, Is.EqualTo(2));
+            string source = File.ReadAllText(Path.Combine(Application.dataPath, "AlphaHex/Tests/Fixtures", fixture + ".json"));
+            var imported = SaveService.Decode(source); var loaded = Reload(imported);
+            Assert.That(imported.State.SchemaVersion, Is.EqualTo(Simulation.CurrentSchemaVersion)); Assert.That(imported.GetTile(Processor).InputOreReserved, Is.EqualTo(2));
+            Assert.That(imported.GetTile(Processor).LegacyOreJob, Is.True); Assert.That(imported.GetTile(Processor).InputTimberReserved, Is.Zero);
+            imported.Tick(200); loaded.Tick(200); Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(JsonUtility.ToJson(imported.State)));
+            Assert.That(imported.GetTile(Processor).LegacyOreJob, Is.False);
         }
-
-        [Test]
-        public void FinalOreCannotBeExtractedTwice()
+        [Test] public void JsonRejectsMissingHeadersAndPayloads()
         {
-            Simulation sim = Simulation.Create();
-            Assert.That(sim.TryBuild(Mine, BuildingKind.Mine, out _), Is.True);
-            for (int i = 0; i < 35; i++) Assert.That(sim.TryExcavate(Mine, out _), Is.True);
-            sim.Tick(5);
-            Assert.That(sim.State.Shipments.Single().Amount, Is.EqualTo(1));
-            Assert.That(sim.TryExcavate(Mine, out _), Is.False);
-            sim.Tick(100);
-            Assert.That(sim.State.Stock.Ore, Is.EqualTo(36));
-            Assert.That(sim.GetTile(Mine).ExcavationDepth, Is.EqualTo(3));
-            Assert.That(sim.GetTile(Mine).Terrain, Is.EqualTo(TerrainKind.Rock));
+            foreach (string json in new[] { "", "{}", "null", "{\"SchemaVersion\":4}", "{\"schema\":3}", "{\"SchemaVersion\":55}" })
+                Assert.Throws<ArgumentException>(() => SaveService.Decode(json), json);
+            string save = JsonUtility.ToJson(Simulation.Create().State);
+            Assert.Throws<ArgumentException>(() => SaveService.Decode(save.Replace("\"Stock\"", "\"MissingStock\"")));
         }
-
-        [Test]
-        public void DuplicateOrUnsupportedSaveDataIsRejected()
+        [Test] public void GodotFractionalResourcesAreNotTruncated()
         {
-            WorldState state = Simulation.Create().State;
-            state.Tiles[1].Coord = state.Tiles[0].Coord;
-            Assert.Throws<ArgumentException>(() => new Simulation(state));
-            state = Simulation.Create().State;
-            state.SchemaVersion++;
-            Assert.Throws<ArgumentException>(() => new Simulation(state));
+            string source = File.ReadAllText(Path.Combine(Application.dataPath, "AlphaHex/Tests/Fixtures/godot-v3.json"));
+            var dto = JsonUtility.FromJson<GodotSaveRecord>(source); dto.stock.ore = .5;
+            Assert.Throws<ArgumentException>(() => Simulation.ImportGodot(dto));
         }
-
-        [TestCase(BuildingKind.Forestry)]
-        [TestCase(BuildingKind.Mine)]
-        public void JsonUtilityPreservesFinalDeliveryUntilExtractorClears(BuildingKind kind)
+        [Test] public void FinalDeliveryRetainsItsSourceUntilArrival()
         {
-            Simulation original = Simulation.Create();
-            HexCoord coord = kind == BuildingKind.Forestry ? new HexCoord(-1, 0) : Mine;
-            Assert.That(original.TryBuild(coord, kind, out _), Is.True);
-            TileState tile = original.GetTile(coord);
-            while (tile.TreesRemaining > 1) Assert.That(original.TryHarvest(coord, out _), Is.True);
-            while (tile.OreRemaining > 1) Assert.That(original.TryExcavate(coord, out _), Is.True);
-            original.Tick(kind == BuildingKind.Forestry ? Simulation.ForestrySeconds : Simulation.MineSeconds);
-            int timber = original.State.Stock.Timber;
-            int ore = original.State.Stock.Ore;
-
-            Simulation loaded = new Simulation(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(original.State)));
-            loaded.Tick(0.625f);
-            Assert.That(loaded.GetTile(coord).Building, Is.EqualTo(kind));
-            Assert.That(loaded.State.Shipments.Count, Is.EqualTo(1));
-            loaded.Tick(0.125f);
-            original.Tick(0.75f);
-            Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(JsonUtility.ToJson(original.State)));
-            Assert.That(loaded.GetTile(coord).Building, Is.EqualTo(BuildingKind.None));
-            Assert.That(loaded.GetTile(coord).HasRoad, Is.True);
-            Assert.That(loaded.State.Shipments, Is.Empty);
-            Assert.That(loaded.State.Stock.Timber, Is.EqualTo(timber + (kind == BuildingKind.Forestry ? 3 : 0)));
-            Assert.That(loaded.State.Stock.Ore, Is.EqualTo(ore + (kind == BuildingKind.Mine ? 1 : 0)));
-            Assert.DoesNotThrow(() => new Simulation(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(loaded.State))));
+            var sim = Ready(); Build(sim, Mine, BuildingKind.Mine);
+            while (sim.GetTile(Mine).OreRemaining > 1) Assert.That(sim.TryExcavate(Mine, out _), Is.True);
+            sim.Tick(15); Assert.That(sim.TryDemolish(Mine, out _), Is.False); var loaded = Reload(sim);
+            loaded.Tick(1.125f); Assert.That(loaded.GetTile(Mine).Building, Is.EqualTo(BuildingKind.Mine));
+            loaded.Tick(.125f); Assert.That(loaded.GetTile(Mine).Building, Is.EqualTo(BuildingKind.None)); Assert.That(loaded.GetTile(Mine).HasRoad, Is.True);
+            Assert.That(loaded.GetTile(Mine).Workers, Is.Zero); Reload(loaded);
         }
-
-        [Test]
-        public void JsonUtilityKeepsExpansionGuidanceAfterStarterDepletion()
+        [Test] public void SaveBackupRecoveryAndFailedWritePreserveFiles()
         {
-            Simulation original = Simulation.Create();
-            HexCoord forest = new HexCoord(-1, 0);
-            Assert.That(original.TryBuild(forest, BuildingKind.Forestry, out _), Is.True);
-            original.Tick(60);
-            Assert.That(original.GetTile(forest).Building, Is.EqualTo(BuildingKind.None));
-            string json = JsonUtility.ToJson(original.State);
-            Simulation loaded = new Simulation(JsonUtility.FromJson<WorldState>(json));
-            SettlementObjective goal = SettlementGuide.NextIndustry(loaded);
-            Assert.That(goal.Heading, Is.EqualTo("Restore timber supply"));
-            Assert.That(goal.Target, Is.EqualTo(SettlementGuide.NextIndustry(original).Target));
-            Assert.That(goal.Target.HasValue, Is.True);
-            Assert.That(goal.Target.Value, Is.Not.EqualTo(forest));
-            Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(json), "Guidance must not mutate the save.");
+            string folder = Path.Combine(Path.GetTempPath(), "AlphaHex-SaveTest-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
+            try
+            {
+                string path = Path.Combine(folder, "save.json"); var sim = Simulation.Create();
+                Assert.That(SaveService.TrySaveAt(sim.State, path, out string message), Is.True, message); string first = File.ReadAllText(path);
+                Assert.That(sim.TryClaim(new HexCoord(0, -2), out _), Is.True);
+                Assert.That(SaveService.TrySaveAt(sim.State, path, out message), Is.True, message); Assert.That(File.ReadAllText(path + ".bak"), Is.EqualTo(first));
+                File.WriteAllText(path, "broken"); Assert.That(SaveService.TryLoadAt(path, out var recovered, out message), Is.True, message);
+                Assert.That(recovered.State.Stock.Timber, Is.EqualTo(80)); Assert.That(SaveService.TrySaveAt(sim.State, path, out message), Is.True, message);
+                Assert.That(File.ReadAllText(path + ".bak"), Is.EqualTo(first), "Corrupt primary replaced a good backup.");
+                string blocked = Path.Combine(folder, "blocked.json"); Directory.CreateDirectory(blocked);
+                Assert.That(SaveService.TrySaveAt(sim.State, blocked, out _), Is.False); Assert.That(File.ReadAllText(path + ".bak"), Is.EqualTo(first));
+                Assert.That(File.Exists(blocked + ".pending"), Is.False);
+            }
+            finally { Directory.Delete(folder, true); }
         }
-
-        [Test]
-        public void JsonUtilityMigratesMissingTownFieldsAndPreservesLegacyCargo()
+        [Test] public void UpdateProtocolRoundTripsThroughUnityJson()
         {
-            Simulation original = Simulation.Create();
-            Assert.That(original.TryBuild(Mine, BuildingKind.Mine, out _), Is.True);
-            original.Tick(5.25f);
-            string legacy = JsonUtility.ToJson(original.State).Replace("\"SchemaVersion\":2", "\"SchemaVersion\":1");
-            // Reproduce a version-one file, including truly absent fields rather than defaults.
-            legacy = System.Text.RegularExpressions.Regex.Replace(legacy, ",\"Town\":\\{[^}]*\\}", "");
-            legacy = System.Text.RegularExpressions.Regex.Replace(legacy, ",\"(Food|Residents|DeepOreInitial|DeepOreRemaining|SaplingAge)\":[0-9.]+", "");
-            legacy = System.Text.RegularExpressions.Regex.Replace(legacy, ",\"(WorkPaused|SaplingPlanted)\":(true|false)", "");
-            WorldState payload = JsonUtility.FromJson<WorldState>(legacy);
-            Assert.That(legacy, Does.Not.Contain("\"Town\""));
-            Simulation loaded = Simulation.Restore(payload);
-            Assert.That(payload.SchemaVersion, Is.EqualTo(1), "Migration mutated the source.");
-            Assert.That(loaded.State.Town.Population, Is.EqualTo(4));
-            Assert.That(loaded.State.Stock.Food, Is.EqualTo(24));
-            Assert.That(loaded.GetTile(Mine).DeepOreRemaining, Is.EqualTo(72));
-            loaded.Tick(0.5f);
-            Assert.That(loaded.State.Stock.Ore, Is.EqualTo(2));
-            loaded.State.Stock.Food = 3;
-            Simulation again = Simulation.Restore(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(loaded.State)));
-            Assert.That(again.State.Stock.Food, Is.EqualTo(3), "Migration provisions repeated.");
+            var request = new UpdateRequest { command = "apply", version = "0.2.0", operationId = Guid.NewGuid().ToString("N"),
+                gameStartedUtcTicks = 639000000000000000, statusPath = @"C:\Users\A Person\AppData\status.json", gamePid = 1234, launcherPid = 1233 };
+            var read = JsonUtility.FromJson<UpdateRequest>(JsonUtility.ToJson(request));
+            Assert.That(read.gameStartedUtcTicks, Is.EqualTo(request.gameStartedUtcTicks)); Assert.That(read.statusPath, Is.EqualTo(request.statusPath));
+            Assert.That(UpdateArguments.Quote(request.statusPath), Is.EqualTo("\"" + request.statusPath + "\""));
         }
-
-        [Test]
-        public void JsonUtilityPreservesImmigrationFoodResearchAndSaplings()
+        [Test] public void GodotImportDefaultsToThePlatformUserDataDirectory()
         {
-            Simulation original = Simulation.Create();
-            Assert.That(original.TryBuild(Smelter, BuildingKind.Forager, out _), Is.True);
-            Assert.That(original.TryBuild(new HexCoord(0, -1), BuildingKind.House, out _), Is.True);
-            original.Tick(20);
-            Assert.That(original.TryResearch(ResearchKind.Reforestation, out _), Is.True);
-            Assert.That(original.TryBuild(new HexCoord(-1, 1), BuildingKind.Forester, out _), Is.True);
-            Assert.That(original.TryHarvest(new HexCoord(-1, 0), out _), Is.True);
-            original.Tick(8.3f);
-            Assert.That(original.State.Tiles.Any(t => t.SaplingPlanted), Is.True);
-            Simulation loaded = Simulation.Restore(JsonUtility.FromJson<WorldState>(JsonUtility.ToJson(original.State)));
-            original.Tick(50);
-            loaded.Tick(50);
-            Assert.That(JsonUtility.ToJson(loaded.State), Is.EqualTo(JsonUtility.ToJson(original.State)));
-            Assert.That(loaded.HasResearch(ResearchKind.Reforestation), Is.True);
-            Assert.That(loaded.State.Town.Population, Is.EqualTo(8));
+            if (Application.platform == RuntimePlatform.OSXEditor)
+                Assert.That(SaveService.GodotPath, Does.Contain(Path.Combine("Library", "Application Support", "AlphaHexFrontier")));
+            else Assert.That(SaveService.GodotPath, Does.EndWith(Path.Combine("AlphaHexFrontier", "frontier.json")));
         }
-
-        [TestCase("house")]
-        [TestCase("farm")]
-        [TestCase("forester")]
-        public void TownIllustrationsImportAsCompactTransparentTextures(string name)
+        [Test] public void MalformedReservationsAndCensusAreRejected()
         {
-            Texture2D texture = Resources.Load<Texture2D>("TownArt/" + name);
-            Assert.That(texture, Is.Not.Null);
-            Assert.That(texture.width, Is.LessThanOrEqualTo(256));
-            string path = UnityEditor.AssetDatabase.GetAssetPath(texture);
-            var importer = (UnityEditor.TextureImporter)UnityEditor.AssetImporter.GetAtPath(path);
-            Assert.That(importer.alphaIsTransparency, Is.True);
-            Assert.That(importer.mipmapEnabled, Is.False);
+            var state = Ready().State; state.Town.Population++; Assert.Throws<ArgumentException>(() => new Simulation(state));
+            var sim = Ready(); Build(sim, Processor, BuildingKind.Bloomery); Assert.That(sim.TryStartBatch(Processor, out _), Is.True);
+            sim.GetTile(Processor).InputTimberReserved--; Assert.Throws<ArgumentException>(() => Reload(sim));
         }
     }
 }

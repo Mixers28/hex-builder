@@ -17,11 +17,15 @@ namespace AlphaHex.Runtime
         private Font font;
         private Canvas canvas;
         private RectTransform safeRoot, topBar, inspector, menu, noticePanel, objectivePanel, toolbar, progressFill;
-        private Text title, timber, ore, metal, food, notice, objectiveHeading, objective, inspectorLabel, menuLabel;
+        private Text title, timber, ore, metal, food, stone, clay, brick, notice, objectiveHeading, objective, inspectorLabel, menuLabel;
         private Text tileTitle, tileInfo, tileStatus, selectedTool, applyLabel, gatherLabel, demolitionLabel;
         private Text newLabel, pauseLabel, speedLabel;
         private Button apply, gather, demolish, showObjective, forage, pauseWork;
-        private Text forageLabel, pauseWorkLabel;
+        private Text forageLabel, pauseWorkLabel, crewLabel, updateLabel, updateStatus, importLabel;
+        private Button crewAdd, crewRemove, batch, towerUpgrade, updateButton;
+        private RectTransform crewRow;
+        private InputField importPath;
+        private float confirmImportUntil;
         private readonly Button[] tools = new Button[7];
         private Rect previousSafeArea;
         private Vector2Int previousScreen;
@@ -76,12 +80,15 @@ namespace AlphaHex.Runtime
             row.childControlHeight = row.childControlWidth = true;
             row.childForceExpandHeight = true;
             row.childForceExpandWidth = false;
-            title = Label("Title", topBar, "ALPHA HEX\n<size=10>DEPOT STOCK</size>", 17, Color.white);
-            Size(title.gameObject, 108, 48, 1);
+            title = Label("Title", topBar, "ALPHA HEX\n<size=11>STOCK / + CARTS</size>", 17, Color.white);
+            Size(title.gameObject, 106, 48, 1);
             timber = Stat("Timber");
             ore = Stat("Iron ore");
             metal = Stat("Metal");
             food = Stat("Food");
+            clay = Stat("Clay");
+            brick = Stat("Bricks");
+            stone = Stat("Stone");
             Button townButton = MakeButton(topBar, "Town [T]", ToggleTown, out townLabel); Size(townButton.gameObject, 98, 44);
             Button pause = MakeButton(topBar, "Pause", game.TogglePause, out pauseLabel); Size(pause.gameObject, 66, 44);
             Button speed = MakeButton(topBar, "1x", game.CycleSpeed, out speedLabel); Size(speed.gameObject, 44, 44);
@@ -92,14 +99,14 @@ namespace AlphaHex.Runtime
         private Text Stat(string name)
         {
             Text text = Label(name, topBar, "", 11, MutedColor);
-            Size(text.gameObject, 126, 48);
+            Size(text.gameObject, 78, 48);
             return text;
         }
 
         private void BuildNotice()
         {
             noticePanel = Panel("Notice", safeRoot, Vector2.up, Vector2.up, Vector2.zero, Vector2.zero);
-            notice = Label("Message", noticePanel, "", 12, Color.white);
+            notice = Label("Message", noticePanel, "", 14, Color.white);
             Stretch(notice.rectTransform, 12, 6, 12, 6);
         }
 
@@ -134,8 +141,8 @@ namespace AlphaHex.Runtime
             content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             tileTitle = Label("Tile Title", content, "Choose a tile", 21, Color.white); Size(tileTitle.gameObject, 0, 30);
-            tileInfo = Label("Tile Details", content, "", 13, MutedColor); Size(tileInfo.gameObject, 0, 86);
-            tileStatus = Label("Production Status", content, "", 13, Color.white); Size(tileStatus.gameObject, 0, 100);
+            tileInfo = Label("Tile Details", content, "", 14, MutedColor); Size(tileInfo.gameObject, 0, 108);
+            tileStatus = Label("Production Status", content, "", 14, Color.white); Size(tileStatus.gameObject, 0, 126);
             RectTransform track = Panel("Progress", content, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             track.GetComponent<Image>().color = ButtonColor;
             Size(track.gameObject, 0, 5);
@@ -146,6 +153,14 @@ namespace AlphaHex.Runtime
             apply = MakeButton(content, "Apply", game.ApplyTool, out applyLabel); Size(apply.gameObject, 0, 44);
             gather = MakeButton(content, "Gather", game.GatherSelected, out gatherLabel); Size(gather.gameObject, 0, 44);
             forage = MakeButton(content, "Forage food +2 [F]", game.ForageSelected, out forageLabel); Size(forage.gameObject, 0, 44);
+            crewRow = MakeRect("Crew controls", content); Size(crewRow.gameObject, 0, 44);
+            var crewLayout = crewRow.gameObject.AddComponent<HorizontalLayoutGroup>(); crewLayout.spacing = 6;
+            crewLayout.childControlWidth = crewLayout.childControlHeight = true; crewLayout.childForceExpandWidth = false;
+            crewRemove = MakeButton(crewRow, "−", () => game.AssignSelected(-1), out _); Size(crewRemove.gameObject, 44, 44);
+            crewLabel = Label("Assigned workers", crewRow, "", 14, Color.white); Size(crewLabel.gameObject, 124, 44, 1); crewLabel.alignment = TextAnchor.MiddleCenter;
+            crewAdd = MakeButton(crewRow, "+", () => game.AssignSelected(1), out _); Size(crewAdd.gameObject, 44, 44);
+            batch = MakeButton(content, "Start batch · 3 ore + 3 timber", game.StartSelectedBatch, out _); Size(batch.gameObject, 0, 48);
+            towerUpgrade = MakeButton(content, "Reinforce · 12 timber / 4 metal / 16 stone", game.UpgradeSelectedTower, out _); Size(towerUpgrade.gameObject, 0, 54);
             pauseWork = MakeButton(content, "Pause work", game.ToggleSelectedWork, out pauseWorkLabel); Size(pauseWork.gameObject, 0, 44);
             demolish = MakeButton(content, "Remove", ConfirmRemove, out demolitionLabel); Size(demolish.gameObject, 0, 44);
             Text help = Label("Placement Help", content, "Choose a tool, select a site, then apply.\nI shows or hides this panel.", 11, MutedColor);
@@ -166,6 +181,15 @@ namespace AlphaHex.Runtime
             Button load = MakeButton(menu, "Load   /   F9", () => { game.LoadGame(); CloseMenu(); }, out _); Size(load.gameObject, 0, 44);
             Button previous = MakeButton(menu, "Previous island", () => { game.LoadPreviousWorld(); CloseMenu(); }, out _); Size(previous.gameObject, 0, 44);
             Button fresh = MakeButton(menu, "New island", ConfirmNew, out newLabel); Size(fresh.gameObject, 0, 44);
+            var pathRect = Panel("Import path", menu, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            pathRect.GetComponent<Image>().color = ButtonColor; Size(pathRect.gameObject, 0, 40);
+            importPath = pathRect.gameObject.AddComponent<InputField>(); var pathText = Label("Path", pathRect, "", 12, Color.white);
+            Stretch(pathText.rectTransform, 8, 4, 8, 4); pathText.supportRichText = false; importPath.textComponent = pathText;
+            importPath.text = SaveService.GodotPath;
+            var import = MakeButton(menu, "Import Godot save", ConfirmImport, out importLabel); Size(import.gameObject, 0, 44);
+            updateStatus = Label("Update status", menu, "", 12, MutedColor); Size(updateStatus.gameObject, 0, 52);
+            updateButton = MakeButton(menu, "Check for updates", () => game.Updates.Act(), out updateLabel); Size(updateButton.gameObject, 0, 44);
+            var exit = MakeButton(menu, "Save & Exit", () => game.SaveAndExit(), out _); Size(exit.gameObject, 0, 48);
         }
 
         private void BuildToolbar()
@@ -177,8 +201,8 @@ namespace AlphaHex.Runtime
             row.childAlignment = TextAnchor.MiddleCenter;
             row.childControlHeight = row.childControlWidth = true;
             row.childForceExpandHeight = row.childForceExpandWidth = true;
-            string[] names = {"INSPECT", "CLAIM", "ROAD", "LOGGING", "MINE", "SMELTER", "HOME"};
-            string[] costs = {"Select a site", "6 timber / 1 metal", "2 timber", "10 timber", "14 timber / 2 metal", "20 timber / 4 metal", "Depot view"};
+            string[] names = {"INSPECT", "CLAIM", "ROAD", "LOGGING", "MINE", "FOUNDRY", "HOME"};
+            string[] costs = {"Select a site", "6 timber", "2 timber", "12 timber", "16 timber / 6 bricks", "Efficient refining", "Depot view"};
             for (int i = 0; i < names.Length; i++)
             {
                 var tool = (WorldTool)i;
@@ -196,7 +220,7 @@ namespace AlphaHex.Runtime
             showObjective = MakeButton(objectivePanel, "Show site [G]", game.FocusObjective, out Text label);
             label.fontSize = 12;
             PlaceTop(showObjective.GetComponent<RectTransform>(), Vector2.one, -94, -6, 88, 44);
-            objective = Label("Objective", objectivePanel, "", 13, Color.white);
+            objective = Label("Objective", objectivePanel, "", 14, Color.white);
             Stretch(objective.rectTransform, 12, 10, 12, 48);
         }
 
@@ -210,6 +234,11 @@ namespace AlphaHex.Runtime
             ore.text = StatText("IRON ORE", stock.Ore, sim.GetInTransit(ResourceKind.Ore));
             metal.text = StatText("METAL", stock.Metal, sim.GetInTransit(ResourceKind.Metal));
             food.text = StatText("FOOD", stock.Food, sim.GetInTransit(ResourceKind.Food));
+            clay.text = StatText("CLAY", stock.Clay, sim.GetInTransit(ResourceKind.Clay));
+            brick.text = StatText("BRICKS", stock.Brick, sim.GetInTransit(ResourceKind.Brick));
+            stone.text = StatText("STONE", stock.Stone, sim.GetInTransit(ResourceKind.Stone));
+            updateLabel.text = game.Updates.ButtonLabel; updateStatus.text = game.Updates.Status; updateButton.interactable = game.Updates.CanAct;
+            importLabel.text = Time.unscaledTime < confirmImportUntil ? "Confirm import & archive current?" : "Import Godot save";
             RefreshTown();
             if (previousNotice != game.Notice || previousNoticeRevision != game.NoticeRevision)
             {
@@ -243,16 +272,18 @@ namespace AlphaHex.Runtime
                 tileInfo.text = "Select part of the island to inspect its resources, claim it, or build.";
                 tileStatus.text = selectedTool.text = "";
                 apply.interactable = gather.interactable = demolish.interactable = forage.interactable = pauseWork.interactable = false;
+                crewRow.gameObject.SetActive(false); batch.gameObject.SetActive(false); towerUpgrade.gameObject.SetActive(false);
                 progressFill.anchorMax = new Vector2(0, 1);
                 return;
             }
             tileTitle.text = tile.Terrain + "  " + tile.Coord.Q + ", " + tile.Coord.R;
             string deposit = tile.TreesRemaining > 0 ? tile.TreesRemaining + " trees left / " + (tile.TreesRemaining * Simulation.TimberPerTree) + " timber"
                 : tile.InitialOre > 0 ? tile.OreRemaining + " surface ore / " + tile.DeepOreRemaining + " deep ore\nQuarry stage " + tile.ExcavationDepth + "/6"
-                : "No remaining deposit";
+                : tile.InitialStone > 0 ? tile.StoneRemaining + " stone / stage " + tile.ExcavationDepth + "/3"
+                : tile.InitialClay > 0 ? tile.ClayRemaining + " clay remaining" : "No remaining deposit";
             tileInfo.text = (tile.Claimed ? "Owned" : "Unclaimed") + " / elevation " + tile.Elevation + "\n" + deposit
                 + "\n" + (tile.Building == BuildingKind.None ? "Open site" : Simulation.BuildingName(tile.Building)) + (tile.HasRoad ? " / road" : "")
-                + (Simulation.NeedsWorker(tile.Building) ? " / " + sim.GetWorkersAssigned(tile.Coord) + "/1 citizen" : "")
+                + (Simulation.NeedsWorker(tile.Building) ? " / " + sim.GetWorkersAssigned(tile.Coord) + "/" + Simulation.CrewCapacity(tile.Building) + " workers" : "")
                 + (tile.SaplingPlanted ? "\nSapling: " + Mathf.CeilToInt(Simulation.TreeGrowthSeconds - tile.SaplingAge) + " s to maturity" : "");
             tileStatus.text = (game.Paused ? "SIMULATION PAUSED\n" : "") + sim.GetStatus(tile.Coord);
             progressFill.anchorMax = new Vector2(Mathf.Clamp01(sim.GetProgress(tile.Coord)), 1);
@@ -260,22 +291,28 @@ namespace AlphaHex.Runtime
             applyLabel.text = ApplyText(game.Tool);
             apply.gameObject.SetActive(game.Tool != WorldTool.Inspect);
             apply.interactable = game.Tool != WorldTool.Inspect;
-            gather.interactable = tile.Claimed && (tile.TreesRemaining > 0 || tile.OreRemaining > 0);
-            gather.gameObject.SetActive(tile.TreesRemaining > 0 || tile.OreRemaining > 0);
-            gatherLabel.text = tile.TreesRemaining > 0 ? "Gather timber   +3" : "Hand-mine ore   +1";
+            gather.interactable = tile.Claimed && (tile.TreesRemaining > 0 || tile.OreRemaining > 0 || tile.ClayRemaining > 0);
+            gather.gameObject.SetActive(tile.TreesRemaining > 0 || tile.OreRemaining > 0 || tile.ClayRemaining > 0);
+            gatherLabel.text = tile.TreesRemaining > 0 ? "Gather timber   +3" : tile.ClayRemaining > 0 ? "Gather clay   +1" : "Hand-mine ore   +1";
             forage.gameObject.SetActive(tile.Claimed && (tile.Terrain == TerrainKind.Grass || tile.Terrain == TerrainKind.Forest));
             forage.interactable = sim.State.Town.ForageCooldown == 0;
             forageLabel.text = sim.State.Town.ForageCooldown > 0 ? "Forage ready in " + Mathf.CeilToInt(sim.State.Town.ForageCooldown) + " s" : "Forage food +2 [F]";
+            bool workplace = Simulation.NeedsWorker(tile.Building);
+            crewRow.gameObject.SetActive(workplace); crewLabel.text = tile.Workers + " / " + Simulation.CrewCapacity(tile.Building) + " workers";
+            crewRemove.interactable = tile.Workers > 0; crewAdd.interactable = tile.Workers < Simulation.CrewCapacity(tile.Building) && sim.IdleCitizens > 0;
+            batch.gameObject.SetActive(tile.Building == BuildingKind.Bloomery); batch.interactable = !tile.BatchRequested && tile.Workers > 0;
+            towerUpgrade.gameObject.SetActive(tile.Building == BuildingKind.Watchtower && tile.TowerLevel == 1);
+            towerUpgrade.interactable = sim.HasResearch(ResearchKind.Masonry);
             pauseWork.gameObject.SetActive(Simulation.NeedsWorker(tile.Building));
             pauseWork.interactable = tile.Claimed;
-            pauseWorkLabel.text = tile.WorkPaused ? "Resume work" : "Pause work / free citizen";
+            pauseWorkLabel.text = tile.WorkPaused ? "Resume work" : "Pause work / release crew";
             demolish.interactable = tile.Claimed && tile.Building != BuildingKind.Depot && (tile.Building != BuildingKind.None || tile.HasRoad)
                 && !(tile.Building == BuildingKind.House && tile.Residents > 0);
             demolitionLabel.text = RemovalConfirmed(tile) ? "Confirm removal / no refund" : "Remove building or road";
         }
 
-        private static string StatText(string resource, int available, int moving) => resource + "  <size=21><color=#FFFFFF>"
-            + Count(available) + "</color></size>\n<size=11><color=#9EB7C9>" + Count(moving) + " in transit</color></size>";
+        private static string StatText(string resource, int available, int moving) => "<size=11>" + resource + "</size>\n<size=20><color=#FFFFFF>"
+            + Count(available) + "</color></size>  <size=10>+" + Count(moving) + "</size>";
 
         private static string Count(int amount) => amount < 10000 ? amount.ToString()
             : amount < 1000000 ? (amount / 1000f).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "k"
@@ -317,25 +354,22 @@ namespace AlphaHex.Runtime
         {
             menu.gameObject.SetActive(false);
             menuLabel.text = "Menu";
-            confirmNewUntil = 0;
+            confirmNewUntil = confirmImportUntil = 0;
         }
 
         private static string ApplyText(WorldTool tool)
         {
-            switch (tool)
-            {
-                case WorldTool.Claim: return "Claim / 6 timber + 1 metal";
-                case WorldTool.Road: return "Build road / 2 timber";
-                case WorldTool.Forestry: return "Build logging camp / 10 timber";
-                case WorldTool.Mine: return "Build mine / 14 timber + 2 metal";
-                case WorldTool.Smelter: return "Build smelter / 20 timber + 4 metal";
-                case WorldTool.House: return "Build house / 8 timber";
-                case WorldTool.Forager: return "Build forager / 6 timber";
-                case WorldTool.Farm: return "Build farm / 14 timber + 2 metal";
-                case WorldTool.Forester: return "Build forester / 12 timber + 2 metal";
-                case WorldTool.DeepMine: return "Build deep mine / 20 timber + 6 metal";
-                default: return "Choose a build tool";
-            }
+            if (tool == WorldTool.Claim) return "Claim · 6 timber";
+            if (tool == WorldTool.Road) return "Build road · 2 timber";
+            if (Enum.TryParse(tool.ToString(), out BuildingKind building) && Array.IndexOf(Simulation.Buildable, building) >= 0)
+                return "Build " + Simulation.BuildingName(building) + "\n" + Simulation.CostText(Simulation.GetBuildCost(building));
+            return "Choose a building";
+        }
+        private void ConfirmImport()
+        {
+            if (Time.unscaledTime < confirmImportUntil) { confirmImportUntil = 0; game.ImportSave(importPath.text); CloseMenu(); }
+            else confirmImportUntil = Time.unscaledTime + 6;
+            Refresh();
         }
 
         private void ConfirmNew()
@@ -388,16 +422,16 @@ namespace AlphaHex.Runtime
             float height = safe.height / canvas.scaleFactor;
             PlaceTop(topBar, Vector2.up, 12, -12, width - 24, 64);
             title.gameObject.SetActive(width >= 1240);
-            PlaceTop(noticePanel, Vector2.up, 12, -84, Mathf.Min(600, width - 324), 42);
-            PlaceTop(inspector, Vector2.one, -292, -84, 280, Mathf.Min(478, height - 176));
-            PlaceTop(menu, Vector2.one, -236, -84, 224, 248);
+            PlaceTop(noticePanel, Vector2.up, 12, -84, Mathf.Min(650, width - 370), 42);
+            PlaceTop(inspector, Vector2.one, -332, -84, 320, height - 176);
+            PlaceTop(menu, Vector2.one, -342, -84, 330, Mathf.Min(550, height - 100));
             PlaceTop(townPanel, Vector2.one, -Mathf.Min(422, width - 24), -84, Mathf.Min(410, width - 36), height - 176);
             toolbar.pivot = new Vector2(0.5f, 0);
             toolbar.anchoredPosition = new Vector2(0, 12);
             toolbar.sizeDelta = new Vector2(Mathf.Min(1000, width - 24), 68);
             objectivePanel.pivot = Vector2.zero;
             objectivePanel.anchoredPosition = new Vector2(12, 92);
-            objectivePanel.sizeDelta = new Vector2(Mathf.Min(430, width - 324), 126);
+            objectivePanel.sizeDelta = new Vector2(Mathf.Min(460, width - 370), 166);
             objectiveHeading.rectTransform.sizeDelta = new Vector2(objectivePanel.sizeDelta.x - 118, 32);
         }
 
